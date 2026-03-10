@@ -100,7 +100,7 @@
     </style>
 </head>
 <body>
-    <!-- 加载遮罩（用于自动采集） -->
+    <!-- 加载遮罩（用于自动采集，也用于PDF生成提示） -->
     <div id="loadingOverlay">
         <div class="loading-box">
             <div class="spinner"></div>
@@ -660,144 +660,167 @@
 
             // ---------- 生成10分钟段数据清单PDF ----------
             function generateDateRangeReport(fromAuto = false) {
-                // 如果没有数据且不是自动采集模式，则启动自动采集
+                // 如果没有数据且不是自动采集模式，则启动自动采集（采集完成后会自动再次调用本函数）
                 if (!fromAuto && stepsDetails.length === 0) {
+                    // 注意：自动采集过程中会显示自己的加载提示，所以这里不需要额外显示提示
                     startAutoCollect(true);
                     return;
                 }
 
-                const startDateStr = startDateInput.value;
-                const endDateStr = endDateInput.value;
-                if (!startDateStr || !endDateStr) {
-                    alert('请选择起始和结束日期');
-                    return;
-                }
+                // 保存停止按钮的原始显示状态
+                const originalStopBtnDisplay = stopCollectBtn.style.display;
 
-                // 构造本地时间的起止
-                const startDateTime = new Date(startDateStr + 'T00:00:00');
-                const endDateTime = new Date(endDateStr + 'T23:59:59.999');
+                // 显示PDF生成加载遮罩（英文提示）
+                loadingMessage.innerText = 'Generating report, please wait...';
+                progressDetail.innerText = '';          // 清空进度详情
+                stopCollectBtn.style.display = 'none';   // 隐藏“停止采集”按钮（PDF生成不需要）
+                loadingOverlay.style.visibility = 'visible'; // 显示遮罩
 
-                console.log('报告日期范围:', startDateTime.toString(), '至', endDateTime.toString());
-                console.log('步数总记录数:', stepsDetails.length);
-
-                // 生成所有10分钟时间段
-                const slots = [];
-                let current = new Date(startDateTime);
-                while (current <= endDateTime) {
-                    const slotStart = new Date(current);
-                    const slotEnd = new Date(current.getTime() + 10 * 60 * 1000 - 1); // 减1毫秒得到59分59秒999
-                    slots.push({
-                        start: slotStart,
-                        end: slotEnd
-                    });
-                    current = new Date(current.getTime() + 10 * 60 * 1000);
-                }
-                console.log('生成时间段数量:', slots.length);
-
-                // 为快速查找，将步数数据按10分钟段起点建立映射
-                const stepsMap = new Map();
-                stepsDetails.forEach(step => {
-                    const key = floorTo10Minutes(step.startTime).getTime();
-                    if (!stepsMap.has(key)) {
-                        stepsMap.set(key, step);
-                    } else {
-                        console.warn('重复的10分钟段步数数据:', step.startTime);
-                    }
-                });
-
-                // 加速度数据排序（便于查找）
-                accInstant.sort((a, b) => a.time - b.time);
-                accCumulative.sort((a, b) => a.time - b.time);
-
-                // 构建表格行数据
-                const rows = [];
-                slots.forEach(slot => {
-                    const slotStart = slot.start;
-                    const slotEnd = slot.end;
-                    const slotKey = floorTo10Minutes(slotStart).getTime();
-
-                    // 步数数据
-                    const step = stepsMap.get(slotKey);
-                    const totalSwings = step ? Math.floor(step.totalSteps / 2) : '--';
-                    const highIntensity = step ? Math.floor(step.highSteps / 2) : '--';
-
-                    // 瞬时加速度（取最靠近中间时刻）
-                    const midTime = new Date(slotStart.getTime() + 5 * 60 * 1000);
-                    let closestInstant = null;
-                    let minDiff = Infinity;
-                    for (let a of accInstant) {
-                        if (a.time >= slotStart && a.time <= slotEnd) {
-                            const diff = Math.abs(a.time - midTime);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestInstant = a;
-                            }
+                // 使用 setTimeout 确保遮罩先显示出来，然后执行PDF生成
+                setTimeout(() => {
+                    try {
+                        const startDateStr = startDateInput.value;
+                        const endDateStr = endDateInput.value;
+                        if (!startDateStr || !endDateStr) {
+                            alert('Please select start and end dates');
+                            return;
                         }
-                    }
-                    const avgX = closestInstant ? closestInstant.x : '--';
-                    const avgY = closestInstant ? closestInstant.y : '--';
-                    const avgZ = closestInstant ? closestInstant.z : '--';
 
-                    // 累积加速度（取最靠近结束时刻）
-                    let closestCum = null;
-                    minDiff = Infinity;
-                    for (let a of accCumulative) {
-                        if (a.time >= slotStart && a.time <= slotEnd) {
-                            const diff = Math.abs(a.time - slotEnd);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestCum = a;
-                            }
+                        // 构造本地时间的起止
+                        const startDateTime = new Date(startDateStr + 'T00:00:00');
+                        const endDateTime = new Date(endDateStr + 'T23:59:59.999');
+
+                        console.log('报告日期范围:', startDateTime.toString(), '至', endDateTime.toString());
+                        console.log('步数总记录数:', stepsDetails.length);
+
+                        // 生成所有10分钟时间段
+                        const slots = [];
+                        let current = new Date(startDateTime);
+                        while (current <= endDateTime) {
+                            const slotStart = new Date(current);
+                            const slotEnd = new Date(current.getTime() + 10 * 60 * 1000 - 1); // 减1毫秒得到59分59秒999
+                            slots.push({
+                                start: slotStart,
+                                end: slotEnd
+                            });
+                            current = new Date(current.getTime() + 10 * 60 * 1000);
                         }
+                        console.log('生成时间段数量:', slots.length);
+
+                        // 为快速查找，将步数数据按10分钟段起点建立映射
+                        const stepsMap = new Map();
+                        stepsDetails.forEach(step => {
+                            const key = floorTo10Minutes(step.startTime).getTime();
+                            if (!stepsMap.has(key)) {
+                                stepsMap.set(key, step);
+                            } else {
+                                console.warn('重复的10分钟段步数数据:', step.startTime);
+                            }
+                        });
+
+                        // 加速度数据排序（便于查找）
+                        accInstant.sort((a, b) => a.time - b.time);
+                        accCumulative.sort((a, b) => a.time - b.time);
+
+                        // 构建表格行数据
+                        const rows = [];
+                        slots.forEach(slot => {
+                            const slotStart = slot.start;
+                            const slotEnd = slot.end;
+                            const slotKey = floorTo10Minutes(slotStart).getTime();
+
+                            // 步数数据
+                            const step = stepsMap.get(slotKey);
+                            const totalSwings = step ? Math.floor(step.totalSteps / 2) : '--';
+                            const highIntensity = step ? Math.floor(step.highSteps / 2) : '--';
+
+                            // 瞬时加速度（取最靠近中间时刻）
+                            const midTime = new Date(slotStart.getTime() + 5 * 60 * 1000);
+                            let closestInstant = null;
+                            let minDiff = Infinity;
+                            for (let a of accInstant) {
+                                if (a.time >= slotStart && a.time <= slotEnd) {
+                                    const diff = Math.abs(a.time - midTime);
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        closestInstant = a;
+                                    }
+                                }
+                            }
+                            const avgX = closestInstant ? closestInstant.x : '--';
+                            const avgY = closestInstant ? closestInstant.y : '--';
+                            const avgZ = closestInstant ? closestInstant.z : '--';
+
+                            // 累积加速度（取最靠近结束时刻）
+                            let closestCum = null;
+                            minDiff = Infinity;
+                            for (let a of accCumulative) {
+                                if (a.time >= slotStart && a.time <= slotEnd) {
+                                    const diff = Math.abs(a.time - slotEnd);
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        closestCum = a;
+                                    }
+                                }
+                            }
+                            const lastCumX = closestCum ? closestCum.x : '--';
+                            const lastCumY = closestCum ? closestCum.y : '--';
+                            const lastCumZ = closestCum ? closestCum.z : '--';
+
+                            rows.push([
+                                formatDateTime(slotStart),
+                                formatDateTime(slotEnd),
+                                totalSwings,
+                                highIntensity,
+                                avgX,
+                                avgY,
+                                avgZ,
+                                lastCumX,
+                                lastCumY,
+                                lastCumZ
+                            ]);
+                        });
+
+                        // 生成PDF
+                        const { jsPDF } = window.jspdf;
+                        const doc = new jsPDF({ orientation: 'landscape' });
+                        doc.setFontSize(16);
+                        doc.text('BraceSense 10-Minute Data Report', 14, 20);
+                        doc.setFontSize(10);
+                        doc.text(`Date Range: ${startDateStr} to ${endDateStr}`, 14, 30);
+                        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 38);
+
+                        doc.autoTable({
+                            startY: 45,
+                            head: [['Start', 'End', 'Total Swings', 'High Int.', 'X', 'Y', 'Z', 'Cum X', 'Cum Y', 'Cum Z']],
+                            body: rows,
+                            theme: 'striped',
+                            headStyles: { fillColor: [0, 122, 255] },
+                            columnStyles: {
+                                0: { cellWidth: 40 },
+                                1: { cellWidth: 40 },
+                                2: { cellWidth: 25 },
+                                3: { cellWidth: 25 },
+                                4: { cellWidth: 20 },
+                                5: { cellWidth: 20 },
+                                6: { cellWidth: 20 },
+                                7: { cellWidth: 25 },
+                                8: { cellWidth: 25 },
+                                9: { cellWidth: 25 }
+                            }
+                        });
+
+                        // 保存PDF（这会触发浏览器下载）
+                        doc.save(`BraceSense_10min_${startDateStr}_${endDateStr}.pdf`);
+                    } catch (error) {
+                        console.error('PDF生成失败', error);
+                        alert('Failed to generate PDF: ' + error.message);
+                    } finally {
+                        // 无论成功或失败，都隐藏加载遮罩并恢复停止按钮显示状态
+                        loadingOverlay.style.visibility = 'hidden';
+                        stopCollectBtn.style.display = originalStopBtnDisplay;
                     }
-                    const lastCumX = closestCum ? closestCum.x : '--';
-                    const lastCumY = closestCum ? closestCum.y : '--';
-                    const lastCumZ = closestCum ? closestCum.z : '--';
-
-                    rows.push([
-                        formatDateTime(slotStart),
-                        formatDateTime(slotEnd),
-                        totalSwings,
-                        highIntensity,
-                        avgX,
-                        avgY,
-                        avgZ,
-                        lastCumX,
-                        lastCumY,
-                        lastCumZ
-                    ]);
-                });
-
-                // 生成PDF
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF({ orientation: 'landscape' });
-                doc.setFontSize(16);
-                doc.text('BraceSense 10-Minute Data Report', 14, 20);
-                doc.setFontSize(10);
-                doc.text(`Date Range: ${startDateStr} to ${endDateStr}`, 14, 30);
-                doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 38);
-
-                doc.autoTable({
-                    startY: 45,
-                    head: [['Start', 'End', 'Total Swings', 'High Int.', 'X', 'Y', 'Z', 'Cum X', 'Cum Y', 'Cum Z']],
-                    body: rows,
-                    theme: 'striped',
-                    headStyles: { fillColor: [0, 122, 255] },
-                    columnStyles: {
-                        0: { cellWidth: 40 },
-                        1: { cellWidth: 40 },
-                        2: { cellWidth: 25 },
-                        3: { cellWidth: 25 },
-                        4: { cellWidth: 20 },
-                        5: { cellWidth: 20 },
-                        6: { cellWidth: 20 },
-                        7: { cellWidth: 25 },
-                        8: { cellWidth: 25 },
-                        9: { cellWidth: 25 }
-                    }
-                });
-
-                doc.save(`BraceSense_10min_${startDateStr}_${endDateStr}.pdf`);
+                }, 50); // 延迟50ms确保遮罩先显示
             }
 
             // 更新本地时间
@@ -902,4 +925,3 @@
     </script>
 </body>
 </html>
-
