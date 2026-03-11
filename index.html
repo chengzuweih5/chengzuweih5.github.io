@@ -10,7 +10,6 @@
     <!-- Chart.js for PDF charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        /* 完整样式，与之前一致，此处略（实际使用时请保留原有完整样式） */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; display: flex; flex-direction: column; align-items: center; }
         .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; }
@@ -563,57 +562,57 @@
                 return `${y}-${m}-${d2} ${h}:${min}:${s}`;
             }
 
-// ---------- 合并数据生成综合表格 ----------
-function mergeData() {
-    stepsDetails.sort((a,b) => a.startTime - b.startTime);
-    accInstant.sort((a,b) => a.time - b.time);
+            // ---------- 合并数据生成综合表格 ----------
+            function mergeData() {
+                stepsDetails.sort((a,b) => a.startTime - b.startTime);
+                accInstant.sort((a,b) => a.time - b.time);
 
-    const merged = stepsDetails.map(step => {
-        const start = step.startTime;
-        const end = new Date(start.getTime() + 10*60*1000 - 1);
-        const mid = new Date(start.getTime() + 5*60*1000);
-        
-        const totalRaw = step.totalSteps;
-        const highRaw = step.highSteps;
-        let totalVal = Math.floor(totalRaw / 2);
-        let highVal = Math.floor(highRaw / 2);
-        
-        if (totalVal < highVal) {
-            console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
-            // 可选修正：totalVal = highVal;
-        }
+                const merged = stepsDetails.map(step => {
+                    const start = step.startTime;
+                    const end = new Date(start.getTime() + 10*60*1000 - 1);
+                    const mid = new Date(start.getTime() + 5*60*1000);
+                    
+                    const totalRaw = step.totalSteps;
+                    const highRaw = step.highSteps;
+                    let totalVal = Math.floor(totalRaw / 2);
+                    let highVal = Math.floor(highRaw / 2);
+                    
+                    if (totalVal < highVal) {
+                        console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
+                        // 可选修正：totalVal = highVal;
+                    }
 
-        let closestInstant = null;
-        let minDiff = Infinity;
-        for (let a of accInstant) {
-            if (a.time >= start && a.time <= end) {
-                const diff = Math.abs(a.time - mid);
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestInstant = a;
-                }
+                    let closestInstant = null;
+                    let minDiff = Infinity;
+                    for (let a of accInstant) {
+                        if (a.time >= start && a.time <= end) {
+                            const diff = Math.abs(a.time - mid);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestInstant = a;
+                            }
+                        }
+                    }
+                    return {
+                        segmentStr: formatSegment(start),
+                        timestamp: start.getTime(),
+                        totalSteps: totalVal,
+                        highSteps: highVal,
+                        x: closestInstant ? closestInstant.x : '--',
+                        y: closestInstant ? closestInstant.y : '--',
+                        z: closestInstant ? closestInstant.z : '--'
+                    };
+                });
+
+                merged.sort((a, b) => b.timestamp - a.timestamp);
+                renderTable(merged);
+                tableContainer.style.display = 'block';
+                
+                // 暴露变量到全局
+                window.stepsDetails = stepsDetails;
+                window.accInstant = accInstant;
+                console.log('stepsDetails exposed from mergeData, length =', stepsDetails.length);
             }
-        }
-        return {
-            segmentStr: formatSegment(start),
-            timestamp: start.getTime(),
-            totalSteps: totalVal,
-            highSteps: highVal,
-            x: closestInstant ? closestInstant.x : '--',
-            y: closestInstant ? closestInstant.y : '--',
-            z: closestInstant ? closestInstant.z : '--'
-        };
-    });
-
-    merged.sort((a, b) => b.timestamp - a.timestamp);
-    renderTable(merged);
-    tableContainer.style.display = 'block';
-    
-    // 暴露变量到全局
-    window.stepsDetails = stepsDetails;
-    window.accInstant = accInstant;
-    console.log('stepsDetails exposed from mergeData, length =', stepsDetails.length);
-}
 
             function formatSegment(date) {
                 const d = floorTo10Minutes(date);
@@ -644,7 +643,11 @@ function mergeData() {
 
             // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，带调试输出）----------
             async function generateDateRangeReport(fromAuto = false) {
+                console.log('=== PDF生成开始 ===');
+                console.log('stepsDetails length:', stepsDetails.length);
+                
                 if (!fromAuto && stepsDetails.length === 0) {
+                    console.log('无数据，启动自动采集');
                     startAutoCollect(true);
                     return;
                 }
@@ -666,6 +669,7 @@ function mergeData() {
                     days.push(new Date(current));
                     current.setDate(current.getDate() + 1);
                 }
+                console.log('日期范围天数:', days.length);
 
                 // 构建步数映射（按10分钟起点的时间戳）
                 const stepsMap = new Map();
@@ -673,6 +677,7 @@ function mergeData() {
                     const key = floorTo10Minutes(step.startTime).getTime();
                     stepsMap.set(key, step);
                 });
+                console.log('stepsMap size:', stepsMap.size);
 
                 // 加速度数据排序
                 accInstant.sort((a, b) => a.time - b.time);
@@ -748,6 +753,7 @@ function mergeData() {
                         if (!day) continue;
 
                         const dateStr = formatDate(day);
+                        console.log(`\n处理日期: ${dateStr}`);
 
                         // 生成144个时间点数据
                         const totalData = [];
@@ -791,7 +797,7 @@ function mergeData() {
                         // 调试输出：每天的数据点数量
                         const nonNullTotal = totalData.filter(v => v !== null).length;
                         const nonNullHigh = highData.filter(v => v !== null).length;
-                        console.log(`Day ${dateStr}: total non-null = ${nonNullTotal}, high non-null = ${nonNullHigh}`);
+                        console.log(`  total non-null = ${nonNullTotal}, high non-null = ${nonNullHigh}`);
 
                         // 计算左侧Y轴范围
                         const allCounts = [...totalData, ...highData].filter(v => v !== null);
@@ -1050,12 +1056,11 @@ function mergeData() {
             // 初始状态
             disconnectBtn.disabled = true;
 
-            // 暴露变量到全局，方便控制台调试
+            // 暴露变量到全局（备用）
             window.stepsDetails = stepsDetails;
             window.accInstant = accInstant;
-            console.log('Variables exposed: stepsDetails length =', stepsDetails.length);
+            console.log('Initial stepsDetails length:', stepsDetails.length);
         })();
     </script>
 </body>
 </html>
-
