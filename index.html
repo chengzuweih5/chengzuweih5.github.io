@@ -563,52 +563,57 @@
                 return `${y}-${m}-${d2} ${h}:${min}:${s}`;
             }
 
-            // ---------- 合并数据生成综合表格 ----------
-            function mergeData() {
-                stepsDetails.sort((a,b) => a.startTime - b.startTime);
-                accInstant.sort((a,b) => a.time - b.time);
+// ---------- 合并数据生成综合表格 ----------
+function mergeData() {
+    stepsDetails.sort((a,b) => a.startTime - b.startTime);
+    accInstant.sort((a,b) => a.time - b.time);
 
-                const merged = stepsDetails.map(step => {
-                    const start = step.startTime;
-                    const end = new Date(start.getTime() + 10*60*1000 - 1);
-                    const mid = new Date(start.getTime() + 5*60*1000);
-                    
-                    const totalRaw = step.totalSteps;
-                    const highRaw = step.highSteps;
-                    let totalVal = Math.floor(totalRaw / 2);
-                    let highVal = Math.floor(highRaw / 2);
-                    
-                    if (totalVal < highVal) {
-                        console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
-                        // 可选修正：totalVal = highVal;
-                    }
+    const merged = stepsDetails.map(step => {
+        const start = step.startTime;
+        const end = new Date(start.getTime() + 10*60*1000 - 1);
+        const mid = new Date(start.getTime() + 5*60*1000);
+        
+        const totalRaw = step.totalSteps;
+        const highRaw = step.highSteps;
+        let totalVal = Math.floor(totalRaw / 2);
+        let highVal = Math.floor(highRaw / 2);
+        
+        if (totalVal < highVal) {
+            console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
+            // 可选修正：totalVal = highVal;
+        }
 
-                    let closestInstant = null;
-                    let minDiff = Infinity;
-                    for (let a of accInstant) {
-                        if (a.time >= start && a.time <= end) {
-                            const diff = Math.abs(a.time - mid);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestInstant = a;
-                            }
-                        }
-                    }
-                    return {
-                        segmentStr: formatSegment(start),
-                        timestamp: start.getTime(),
-                        totalSteps: totalVal,
-                        highSteps: highVal,
-                        x: closestInstant ? closestInstant.x : '--',
-                        y: closestInstant ? closestInstant.y : '--',
-                        z: closestInstant ? closestInstant.z : '--'
-                    };
-                });
-
-                merged.sort((a, b) => b.timestamp - a.timestamp);
-                renderTable(merged);
-                tableContainer.style.display = 'block';
+        let closestInstant = null;
+        let minDiff = Infinity;
+        for (let a of accInstant) {
+            if (a.time >= start && a.time <= end) {
+                const diff = Math.abs(a.time - mid);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestInstant = a;
+                }
             }
+        }
+        return {
+            segmentStr: formatSegment(start),
+            timestamp: start.getTime(),
+            totalSteps: totalVal,
+            highSteps: highVal,
+            x: closestInstant ? closestInstant.x : '--',
+            y: closestInstant ? closestInstant.y : '--',
+            z: closestInstant ? closestInstant.z : '--'
+        };
+    });
+
+    merged.sort((a, b) => b.timestamp - a.timestamp);
+    renderTable(merged);
+    tableContainer.style.display = 'block';
+    
+    // 暴露变量到全局
+    window.stepsDetails = stepsDetails;
+    window.accInstant = accInstant;
+    console.log('stepsDetails exposed from mergeData, length =', stepsDetails.length);
+}
 
             function formatSegment(date) {
                 const d = floorTo10Minutes(date);
@@ -1053,3 +1058,4 @@
     </script>
 </body>
 </html>
+
