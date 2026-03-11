@@ -142,7 +142,7 @@
             <button id="disconnectBtn" disabled class="secondary">⛔ Disconnect</button>
         </div>
 
-        <!-- 日期范围与生成报告按钮 -->
+        <!-- 日期范围与生成报告按钮（添加了 onclick 直接调用） -->
         <div class="date-range">
             <div class="date-item">
                 <label>Start:</label>
@@ -153,7 +153,7 @@
                 <input type="date" id="endDateInput">
             </div>
             <div class="report-btn-container">
-                <button id="reportBtn" class="secondary" style="width:100%;">📄 Generate PDF Report</button>
+                <button id="reportBtn" class="secondary" style="width:100%;" onclick="generateDateRangeReport(false)">📄 Generate PDF Report</button>
             </div>
         </div>
 
@@ -564,6 +564,11 @@
 
             // ---------- 合并数据生成综合表格 ----------
             function mergeData() {
+                // 强制暴露变量（在最开头就暴露）
+                window.stepsDetails = stepsDetails;
+                window.accInstant = accInstant;
+                console.log('mergeData started, stepsDetails length =', stepsDetails.length);
+                
                 stepsDetails.sort((a,b) => a.startTime - b.startTime);
                 accInstant.sort((a,b) => a.time - b.time);
 
@@ -608,10 +613,10 @@
                 renderTable(merged);
                 tableContainer.style.display = 'block';
                 
-                // 暴露变量到全局
+                // 再次暴露（确保）
                 window.stepsDetails = stepsDetails;
                 window.accInstant = accInstant;
-                console.log('stepsDetails exposed from mergeData, length =', stepsDetails.length);
+                console.log('mergeData finished, stepsDetails length =', stepsDetails.length);
             }
 
             function formatSegment(date) {
@@ -641,304 +646,310 @@
                 });
             }
 
-            // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，增强调试）----------
-            async function generateDateRangeReport(fromAuto = false) {
-                // 强制暴露变量到控制台
-                window.stepsDetails = stepsDetails;
-                window.accInstant = accInstant;
-                console.log('=== PDF生成开始 ===');
-                console.log('stepsDetails长度:', stepsDetails.length);
-                if (stepsDetails.length > 0) {
-                    console.log('第一条步数记录:', stepsDetails[0]);
-                    console.log('包含的日期:', stepsDetails.map(s => s.startTime.toLocaleDateString()).slice(0, 5));
-                }
-                
-                if (!fromAuto && stepsDetails.length === 0) {
-                    console.log('无数据，启动自动采集');
-                    startAutoCollect(true);
-                    return;
-                }
-
-                const startDateStr = startDateInput.value;
-                const endDateStr = endDateInput.value;
-                if (!startDateStr || !endDateStr) {
-                    alert('Please select start and end dates');
-                    return;
-                }
-
-                const startDate = new Date(startDateStr + 'T00:00:00');
-                const endDate = new Date(endDateStr + 'T23:59:59.999');
-
-                // 生成所有需要显示的日期列表（每一天）
-                const days = [];
-                let current = new Date(startDate);
-                while (current <= endDate) {
-                    days.push(new Date(current));
-                    current.setDate(current.getDate() + 1);
-                }
-                console.log('日期范围天数:', days.length);
-
-                // 构建步数映射（按10分钟起点的时间戳）
-                const stepsMap = new Map();
-                stepsDetails.forEach(step => {
-                    const key = floorTo10Minutes(step.startTime).getTime();
-                    stepsMap.set(key, step);
-                });
-                console.log('stepsMap大小:', stepsMap.size);
-
-                // 加速度数据排序
-                accInstant.sort((a, b) => a.time - b.time);
-
-                // 获取设备ID后四位
-                let deviceLast4 = '----';
-                if (bluetoothDevice && bluetoothDevice.name) {
-                    const name = bluetoothDevice.name;
-                    const match = name.match(/([A-F0-9]{4})$/i);
-                    if (match) deviceLast4 = match[1].toUpperCase();
-                }
-
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-
-                // 清空隐藏容器
-                pdfChartContainer.innerHTML = '';
-
-                // 横版参数：A4横版尺寸 842 x 595
-                const pageWidth = 842;
-                const pageHeight = 595;
-                const margin = 20;
-                const headerY = 30;
-                const chartTop = 50;
-                const cols = 4;
-                const rows = 2;
-                const gap = 8;
-                const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
-                const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
-
-                // 辅助函数：将日期转换为周几索引（周一=0 ... 周日=6）
-                function getWeekIndex(date) {
-                    return (date.getDay() + 6) % 7;
-                }
-
-                // 将天数按周分组，每组最多7天，空缺位置用 null 填充
-                const weeks = [];
-                let i = 0;
-                while (i < days.length) {
-                    const week = new Array(7).fill(null);
-                    const firstDayOfWeek = new Date(days[i]);
-                    firstDayOfWeek.setDate(days[i].getDate() - getWeekIndex(days[i]));
-                    for (let j = 0; j < 7; j++) {
-                        const day = new Date(firstDayOfWeek);
-                        day.setDate(firstDayOfWeek.getDate() + j);
-                        if (i < days.length && days[i].toDateString() === day.toDateString()) {
-                            week[j] = days[i];
-                            i++;
-                        }
+            // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，增强调试，已暴露为全局并添加错误捕获）----------
+            window.generateDateRangeReport = async function generateDateRangeReport(fromAuto = false) {
+                try {
+                    // 强制暴露变量
+                    window.stepsDetails = stepsDetails;
+                    window.accInstant = accInstant;
+                    console.log('=== PDF生成开始 ===');
+                    console.log('stepsDetails长度 (内部):', stepsDetails.length);
+                    if (stepsDetails.length > 0) {
+                        console.log('第一条记录:', stepsDetails[0]);
+                        console.log('包含的日期 (前5个):', stepsDetails.map(s => s.startTime.toLocaleDateString()).slice(0, 5));
                     }
-                    weeks.push(week);
-                }
+                    
+                    if (!fromAuto && stepsDetails.length === 0) {
+                        console.log('无数据，启动自动采集');
+                        startAutoCollect(true);
+                        return;
+                    }
 
-                // 遍历每一周，生成一页PDF
-                for (let w = 0; w < weeks.length; w++) {
-                    const week = weeks[w];
-                    const weekStart = week.find(d => d !== null);
-                    const weekEnd = week.slice().reverse().find(d => d !== null);
-                    if (!weekStart || !weekEnd) continue;
+                    const startDateStr = startDateInput.value;
+                    const endDateStr = endDateInput.value;
+                    if (!startDateStr || !endDateStr) {
+                        alert('Please select start and end dates');
+                        return;
+                    }
 
-                    if (w > 0) doc.addPage();
+                    const startDate = new Date(startDateStr + 'T00:00:00');
+                    const endDate = new Date(endDateStr + 'T23:59:59.999');
 
-                    // 头部：左侧报告信息，右侧生成时间
-                    doc.setFontSize(11);
-                    const leftText = `BraceSense Report ${formatDate(weekStart)} to ${formatDate(weekEnd)} (ID:${deviceLast4})`;
-                    const rightText = new Date().toLocaleString();
-                    doc.text(leftText, margin, headerY);
-                    doc.text(rightText, pageWidth - margin - doc.getTextWidth(rightText), headerY);
+                    // 生成所有需要显示的日期列表（每一天）
+                    const days = [];
+                    let current = new Date(startDate);
+                    while (current <= endDate) {
+                        days.push(new Date(current));
+                        current.setDate(current.getDate() + 1);
+                    }
+                    console.log('日期范围天数:', days.length);
 
-                    // 遍历一周的7个位置（只放有数据的）
-                    for (let idx = 0; idx < 7; idx++) {
-                        const day = week[idx];
-                        if (!day) continue;
+                    // 构建步数映射（按10分钟起点的时间戳）
+                    const stepsMap = new Map();
+                    stepsDetails.forEach(step => {
+                        const key = floorTo10Minutes(step.startTime).getTime();
+                        stepsMap.set(key, step);
+                    });
+                    console.log('stepsMap大小:', stepsMap.size);
 
-                        const dateStr = formatDate(day);
-                        console.log(`\n处理日期: ${dateStr}`);
+                    // 加速度数据排序
+                    accInstant.sort((a, b) => a.time - b.time);
 
-                        // 生成144个时间点数据
-                        const totalData = [];
-                        const highData = [];
-                        const xData = [];
-                        const yData = [];
-                        const zData = [];
+                    // 获取设备ID后四位
+                    let deviceLast4 = '----';
+                    if (bluetoothDevice && bluetoothDevice.name) {
+                        const name = bluetoothDevice.name;
+                        const match = name.match(/([A-F0-9]{4})$/i);
+                        if (match) deviceLast4 = match[1].toUpperCase();
+                    }
 
-                        for (let hour = 0; hour < 24; hour++) {
-                            for (let min = 0; min < 60; min += 10) {
-                                const pointTime = new Date(day);
-                                pointTime.setHours(hour, min, 0, 0);
-                                const pointKey = pointTime.getTime();
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
 
-                                const step = stepsMap.get(pointKey);
-                                const total = step ? Math.floor(step.totalSteps / 2) : null;
-                                const high = step ? Math.floor(step.highSteps / 2) : null;
-                                totalData.push(total);
-                                highData.push(high);
+                    // 清空隐藏容器
+                    pdfChartContainer.innerHTML = '';
 
-                                const slotStart = pointTime;
-                                const slotEnd = new Date(pointTime.getTime() + 10 * 60 * 1000 - 1);
-                                const midTime = new Date(pointTime.getTime() + 5 * 60 * 1000);
-                                let closest = null;
-                                let minDiff = Infinity;
-                                for (let a of accInstant) {
-                                    if (a.time >= slotStart && a.time <= slotEnd) {
-                                        const diff = Math.abs(a.time - midTime);
-                                        if (diff < minDiff) {
-                                            minDiff = diff;
-                                            closest = a;
+                    // 横版参数：A4横版尺寸 842 x 595
+                    const pageWidth = 842;
+                    const pageHeight = 595;
+                    const margin = 20;
+                    const headerY = 30;
+                    const chartTop = 50;
+                    const cols = 4;
+                    const rows = 2;
+                    const gap = 8;
+                    const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
+                    const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
+
+                    // 辅助函数：将日期转换为周几索引（周一=0 ... 周日=6）
+                    function getWeekIndex(date) {
+                        return (date.getDay() + 6) % 7;
+                    }
+
+                    // 将天数按周分组，每组最多7天，空缺位置用 null 填充
+                    const weeks = [];
+                    let i = 0;
+                    while (i < days.length) {
+                        const week = new Array(7).fill(null);
+                        const firstDayOfWeek = new Date(days[i]);
+                        firstDayOfWeek.setDate(days[i].getDate() - getWeekIndex(days[i]));
+                        for (let j = 0; j < 7; j++) {
+                            const day = new Date(firstDayOfWeek);
+                            day.setDate(firstDayOfWeek.getDate() + j);
+                            if (i < days.length && days[i].toDateString() === day.toDateString()) {
+                                week[j] = days[i];
+                                i++;
+                            }
+                        }
+                        weeks.push(week);
+                    }
+
+                    // 遍历每一周，生成一页PDF
+                    for (let w = 0; w < weeks.length; w++) {
+                        const week = weeks[w];
+                        const weekStart = week.find(d => d !== null);
+                        const weekEnd = week.slice().reverse().find(d => d !== null);
+                        if (!weekStart || !weekEnd) continue;
+
+                        if (w > 0) doc.addPage();
+
+                        // 头部：左侧报告信息，右侧生成时间
+                        doc.setFontSize(11);
+                        const leftText = `BraceSense Report ${formatDate(weekStart)} to ${formatDate(weekEnd)} (ID:${deviceLast4})`;
+                        const rightText = new Date().toLocaleString();
+                        doc.text(leftText, margin, headerY);
+                        doc.text(rightText, pageWidth - margin - doc.getTextWidth(rightText), headerY);
+
+                        // 遍历一周的7个位置（只放有数据的）
+                        for (let idx = 0; idx < 7; idx++) {
+                            const day = week[idx];
+                            if (!day) continue;
+
+                            const dateStr = formatDate(day);
+                            console.log(`\n处理日期: ${dateStr}`);
+
+                            // 生成144个时间点数据
+                            const totalData = [];
+                            const highData = [];
+                            const xData = [];
+                            const yData = [];
+                            const zData = [];
+
+                            for (let hour = 0; hour < 24; hour++) {
+                                for (let min = 0; min < 60; min += 10) {
+                                    const pointTime = new Date(day);
+                                    pointTime.setHours(hour, min, 0, 0);
+                                    const pointKey = pointTime.getTime();
+
+                                    const step = stepsMap.get(pointKey);
+                                    const total = step ? Math.floor(step.totalSteps / 2) : null;
+                                    const high = step ? Math.floor(step.highSteps / 2) : null;
+                                    totalData.push(total);
+                                    highData.push(high);
+
+                                    const slotStart = pointTime;
+                                    const slotEnd = new Date(pointTime.getTime() + 10 * 60 * 1000 - 1);
+                                    const midTime = new Date(pointTime.getTime() + 5 * 60 * 1000);
+                                    let closest = null;
+                                    let minDiff = Infinity;
+                                    for (let a of accInstant) {
+                                        if (a.time >= slotStart && a.time <= slotEnd) {
+                                            const diff = Math.abs(a.time - midTime);
+                                            if (diff < minDiff) {
+                                                minDiff = diff;
+                                                closest = a;
+                                            }
+                                        }
+                                    }
+                                    xData.push(closest ? closest.x : null);
+                                    yData.push(closest ? closest.y : null);
+                                    zData.push(closest ? closest.z : null);
+                                }
+                            }
+
+                            // 调试输出：每天的数据点数量
+                            const nonNullTotal = totalData.filter(v => v !== null).length;
+                            const nonNullHigh = highData.filter(v => v !== null).length;
+                            const nonNullX = xData.filter(v => v !== null).length;
+                            console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
+
+                            // 计算图表位置（需要先定义xPos, yPos）
+                            const row = Math.floor(idx / cols);
+                            const col = idx % cols;
+                            const xPos = margin + col * (chartWidth + gap);
+                            const yPos = chartTop + row * (chartHeight + gap);
+
+                            // 如果当天没有任何数据，跳过绘图并在页面显示提示
+                            if (nonNullTotal === 0 && nonNullX === 0) {
+                                doc.setFontSize(10);
+                                doc.text('No data for this date', xPos, yPos - 10);
+                                continue;
+                            }
+
+                            // 计算左侧Y轴范围
+                            const allCounts = [...totalData, ...highData].filter(v => v !== null);
+                            const maxCount = allCounts.length > 0 ? Math.max(...allCounts) : 10;
+                            const leftMin = 0;
+                            const leftMax = Math.max(maxCount * 1.2, 10);
+
+                            // 创建 canvas
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 800;
+                            canvas.height = 400;
+                            canvas.style.width = '800px';
+                            canvas.style.height = '400px';
+                            pdfChartContainer.appendChild(canvas);
+
+                            const ctx = canvas.getContext('2d');
+                            const chart = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: [],
+                                    datasets: [
+                                        { 
+                                            label: 'Total Swings', 
+                                            data: totalData, 
+                                            borderColor: 'rgba(54, 162, 235, 1)', 
+                                            backgroundColor: 'rgba(54, 162, 235, 0.1)', 
+                                            tension: 0.4, 
+                                            pointRadius: 1,          // 显示点，确保可见
+                                            borderWidth: 2, 
+                                            yAxisID: 'y'      
+                                        },
+                                        { 
+                                            label: 'High Int.', 
+                                            data: highData, 
+                                            borderColor: 'rgba(255, 99, 132, 1)', 
+                                            backgroundColor: 'rgba(255, 99, 132, 0.1)', 
+                                            tension: 0.4, 
+                                            pointRadius: 1, 
+                                            borderWidth: 2, 
+                                            yAxisID: 'y'      
+                                        },
+                                        { 
+                                            label: 'X', 
+                                            data: xData, 
+                                            borderColor: 'rgba(75, 192, 192, 1)', 
+                                            backgroundColor: 'rgba(75, 192, 192, 0.1)', 
+                                            tension: 0.4, 
+                                            pointRadius: 1, 
+                                            borderWidth: 1.5, 
+                                            yAxisID: 'y1'     
+                                        },
+                                        { 
+                                            label: 'Y', 
+                                            data: yData, 
+                                            borderColor: 'rgba(153, 102, 255, 1)', 
+                                            backgroundColor: 'rgba(153, 102, 255, 0.1)', 
+                                            tension: 0.4, 
+                                            pointRadius: 1, 
+                                            borderWidth: 1.5, 
+                                            yAxisID: 'y1'     
+                                        },
+                                        { 
+                                            label: 'Z', 
+                                            data: zData, 
+                                            borderColor: 'rgba(255, 159, 64, 1)', 
+                                            backgroundColor: 'rgba(255, 159, 64, 0.1)', 
+                                            tension: 0.4, 
+                                            pointRadius: 1, 
+                                            borderWidth: 1.5, 
+                                            yAxisID: 'y1'     
+                                        }
+                                    ]
+                                },
+                                options: {
+                                    responsive: false,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { display: false },
+                                        tooltip: { enabled: false }
+                                    },
+                                    scales: {
+                                        x: { display: false },
+                                        y: {  
+                                            type: 'linear',
+                                            position: 'left',
+                                            min: leftMin,
+                                            max: leftMax,
+                                            ticks: { display: false },
+                                            grid: { display: false }
+                                        },
+                                        y1: { 
+                                            type: 'linear',
+                                            position: 'right',
+                                            min: -200,
+                                            max: 200,
+                                            ticks: { display: false },
+                                            grid: { display: false }
                                         }
                                     }
                                 }
-                                xData.push(closest ? closest.x : null);
-                                yData.push(closest ? closest.y : null);
-                                zData.push(closest ? closest.z : null);
-                            }
+                            });
+
+                            chart.update();
+                            await new Promise(resolve => setTimeout(resolve, 200));
+
+                            const imgData = canvas.toDataURL('image/png');
+
+                            doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
+
+                            // 在图表上方添加日期标签
+                            doc.setFontSize(8);
+                            doc.setTextColor(0, 0, 0);
+                            doc.text(dateStr, xPos, yPos - 3);
+
+                            chart.destroy();
+                            pdfChartContainer.removeChild(canvas);
                         }
-
-                        // 调试输出：每天的数据点数量
-                        const nonNullTotal = totalData.filter(v => v !== null).length;
-                        const nonNullHigh = highData.filter(v => v !== null).length;
-                        const nonNullX = xData.filter(v => v !== null).length;
-                        console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
-
-                        // 如果当天没有任何数据，跳过绘图并在页面显示提示
-                        if (nonNullTotal === 0 && nonNullX === 0) {
-                            doc.setFontSize(10);
-                            doc.text('No data for this date', margin + idx * 200, chartTop + 50);
-                            continue;
-                        }
-
-                        // 计算左侧Y轴范围
-                        const allCounts = [...totalData, ...highData].filter(v => v !== null);
-                        const maxCount = allCounts.length > 0 ? Math.max(...allCounts) : 10;
-                        const leftMin = 0;
-                        const leftMax = Math.max(maxCount * 1.2, 10);
-
-                        // 创建 canvas
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 800;
-                        canvas.height = 400;
-                        canvas.style.width = '800px';
-                        canvas.style.height = '400px';
-                        pdfChartContainer.appendChild(canvas);
-
-                        const ctx = canvas.getContext('2d');
-                        const chart = new Chart(ctx, {
-                            type: 'line',
-                            data: {
-                                labels: [],
-                                datasets: [
-                                    { 
-                                        label: 'Total Swings', 
-                                        data: totalData, 
-                                        borderColor: 'rgba(54, 162, 235, 1)', 
-                                        backgroundColor: 'rgba(54, 162, 235, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1,          // 显示点，确保可见
-                                        borderWidth: 2, 
-                                        yAxisID: 'y'      
-                                    },
-                                    { 
-                                        label: 'High Int.', 
-                                        data: highData, 
-                                        borderColor: 'rgba(255, 99, 132, 1)', 
-                                        backgroundColor: 'rgba(255, 99, 132, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 2, 
-                                        yAxisID: 'y'      
-                                    },
-                                    { 
-                                        label: 'X', 
-                                        data: xData, 
-                                        borderColor: 'rgba(75, 192, 192, 1)', 
-                                        backgroundColor: 'rgba(75, 192, 192, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    },
-                                    { 
-                                        label: 'Y', 
-                                        data: yData, 
-                                        borderColor: 'rgba(153, 102, 255, 1)', 
-                                        backgroundColor: 'rgba(153, 102, 255, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    },
-                                    { 
-                                        label: 'Z', 
-                                        data: zData, 
-                                        borderColor: 'rgba(255, 159, 64, 1)', 
-                                        backgroundColor: 'rgba(255, 159, 64, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    }
-                                ]
-                            },
-                            options: {
-                                responsive: false,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: false },
-                                    tooltip: { enabled: false }
-                                },
-                                scales: {
-                                    x: { display: false },
-                                    y: {  
-                                        type: 'linear',
-                                        position: 'left',
-                                        min: leftMin,
-                                        max: leftMax,
-                                        ticks: { display: false },
-                                        grid: { display: false }
-                                    },
-                                    y1: { 
-                                        type: 'linear',
-                                        position: 'right',
-                                        min: -200,
-                                        max: 200,
-                                        ticks: { display: false },
-                                        grid: { display: false }
-                                    }
-                                }
-                            }
-                        });
-
-                        chart.update();
-                        await new Promise(resolve => setTimeout(resolve, 200));
-
-                        const imgData = canvas.toDataURL('image/png');
-
-                        const row = Math.floor(idx / cols);
-                        const col = idx % cols;
-                        const xPos = margin + col * (chartWidth + gap);
-                        const yPos = chartTop + row * (chartHeight + gap);
-
-                        doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
-
-                        // 在图表上方添加日期标签
-                        doc.setFontSize(8);
-                        doc.setTextColor(0, 0, 0);
-                        doc.text(dateStr, xPos, yPos - 3);
-
-                        chart.destroy();
-                        pdfChartContainer.removeChild(canvas);
                     }
-                }
 
-                doc.save(`BraceSense_${deviceLast4}_${startDateStr}_${endDateStr}.pdf`);
-                updateStatus('Report generated successfully.');
+                    doc.save(`BraceSense_${deviceLast4}_${startDateStr}_${endDateStr}.pdf`);
+                    updateStatus('Report generated successfully.');
+                } catch (e) {
+                    console.error('PDF生成出错:', e);
+                    alert('PDF生成出错: ' + e.message);
+                }
             }
 
             // ---------- 更新本地时间 ----------
