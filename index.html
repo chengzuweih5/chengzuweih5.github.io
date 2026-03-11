@@ -10,6 +10,7 @@
     <!-- Chart.js for PDF charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
+        /* 完整样式，与之前相同，为节省篇幅此处省略，请从之前提供的代码中复制完整样式 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; display: flex; flex-direction: column; align-items: center; }
         .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; }
@@ -142,7 +143,7 @@
             <button id="disconnectBtn" disabled class="secondary">⛔ Disconnect</button>
         </div>
 
-        <!-- 日期范围与生成报告按钮（添加了 onclick 直接调用） -->
+        <!-- 日期范围与生成报告按钮（使用 onclick 直接调用全局函数） -->
         <div class="date-range">
             <div class="date-item">
                 <label>Start:</label>
@@ -153,7 +154,7 @@
                 <input type="date" id="endDateInput">
             </div>
             <div class="report-btn-container">
-                <button id="reportBtn" class="secondary" style="width:100%;" onclick="generateDateRangeReport(false)">📄 Generate PDF Report</button>
+                <button id="reportBtn" class="secondary" style="width:100%;" onclick="generatePDFReport()">📄 Generate PDF Report</button>
             </div>
         </div>
 
@@ -213,880 +214,821 @@
     </div>
 
     <script>
-        (function() {
-            // ---------- 协议常量 ----------
-            const SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
-            const TX_CHAR_UUID = '0000fff6-0000-1000-8000-00805f9b34fb';
-            const RX_CHAR_UUID = '0000fff7-0000-1000-8000-00805f9b34fb';
+        // ---------- 全局变量（挂载到 window） ----------
+        window.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
+        window.TX_CHAR_UUID = '0000fff6-0000-1000-8000-00805f9b34fb';
+        window.RX_CHAR_UUID = '0000fff7-0000-1000-8000-00805f9b34fb';
 
-            const CMD_REAL_TIME_STEP = 0x09;
-            const CMD_GET_BATTERY = 0x13;
-            const CMD_GET_HISTORY_TOTAL = 0x51;
-            const CMD_GET_DETAIL_STEPS = 0x52;
-            const CMD_GET_ACC_INSTANT = 0x53;
+        window.CMD_REAL_TIME_STEP = 0x09;
+        window.CMD_GET_BATTERY = 0x13;
+        window.CMD_GET_HISTORY_TOTAL = 0x51;
+        window.CMD_GET_DETAIL_STEPS = 0x52;
+        window.CMD_GET_ACC_INSTANT = 0x53;
 
-            // ---------- 全局变量 ----------
-            let bluetoothDevice = null;
-            let gattServer = null;
-            let txChar = null;
-            let rxChar = null;
+        // 数据存储
+        window.bluetoothDevice = null;
+        window.gattServer = null;
+        window.txChar = null;
+        window.rxChar = null;
 
-            let totalSteps = 0;
-            let highSteps = 0;
-            let batteryLevel = '--';
-            
-            let stepsDetails = [];
-            let accInstant = [];
+        window.totalSteps = 0;
+        window.highSteps = 0;
+        window.batteryLevel = '--';
+        
+        window.stepsDetails = [];
+        window.accInstant = [];
 
-            // 自动采集状态
-            let autoCollectActive = false;
-            let currentCommand = null;
-            let commandTimeout = null;
-            let recordCount = 0;
-            let stopRequested = false;
-            let isReportMode = false;
+        // 自动采集状态
+        window.autoCollectActive = false;
+        window.currentCommand = null;
+        window.commandTimeout = null;
+        window.recordCount = 0;
+        window.stopRequested = false;
+        window.isReportMode = false;
 
-            // UI 元素
-            const scanBtn = document.getElementById('scanBtn');
-            const disconnectBtn = document.getElementById('disconnectBtn');
-            const refreshBtn = document.getElementById('refreshBtn');
-            const getDetailBtn = document.getElementById('getDetailBtn');
-            const getAccBtn = document.getElementById('getAccBtn');
-            const mergeBtn = document.getElementById('mergeBtn');
-            const reportBtn = document.getElementById('reportBtn');
+        // ---------- 辅助函数 ----------
+        function updateStatus(msg, isError = false) {
             const statusDiv = document.getElementById('status');
-            const deviceListDiv = document.getElementById('deviceListContainer');
-            const dataSection = document.getElementById('dataSection');
-            const batterySpan = document.getElementById('batteryValue');
-            const deviceIdSpan = document.getElementById('deviceIdValue');
-            const dateSpan = document.getElementById('dateValue');
-            const timezoneLabel = document.getElementById('timezoneLabel');
+            statusDiv.innerText = msg;
+            statusDiv.style.background = isError ? '#ffeeee' : '#ffffff';
+        }
+
+        function showLoading(msg) {
+            const loadingMessage = document.getElementById('loadingMessage');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingMessage.innerText = msg || 'Fetching device data...';
+            loadingOverlay.style.visibility = 'visible';
+        }
+
+        function hideLoading() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            loadingOverlay.style.visibility = 'hidden';
+        }
+
+        function updateProgress(detail) {
+            const progressDetail = document.getElementById('progressDetail');
+            progressDetail.innerText = detail;
+        }
+
+        function calcCRC(bytes) {
+            let sum = 0;
+            for (let i = 0; i < 15; i++) sum += bytes[i];
+            return sum & 0xFF;
+        }
+
+        function buildCommand(cmd, params = []) {
+            const buffer = new ArrayBuffer(16);
+            const view = new Uint8Array(buffer);
+            view[0] = cmd;
+            for (let i = 0; i < params.length && i < 14; i++) view[1 + i] = params[i];
+            for (let i = 1 + params.length; i < 15; i++) view[i] = 0;
+            view[15] = calcCRC(view);
+            return buffer;
+        }
+
+        async function sendCommand(cmd, params = []) {
+            if (!window.txChar) throw new Error('TX characteristic not available');
+            const buffer = buildCommand(cmd, params);
+            await window.txChar.writeValue(buffer);
+            console.log(`Command sent: 0x${cmd.toString(16)}`, params);
+        }
+
+        // ---------- 解析函数 ----------
+        function parseUint32LE(bytes, start) {
+            return bytes[start] | (bytes[start+1] << 8) | (bytes[start+2] << 16) | (bytes[start+3] << 24);
+        }
+
+        function parseInt16LE(bytes, start) {
+            let val = bytes[start] | (bytes[start+1] << 8);
+            if (val >= 0x8000) val -= 0x10000;
+            return val;
+        }
+
+        function bcdToDec(b) {
+            return ((b >> 4) * 10) + (b & 0x0F);
+        }
+
+        function bcdToDate(y, m, d, h, min, s) {
+            return new Date(2000 + bcdToDec(y), bcdToDec(m)-1, bcdToDec(d), bcdToDec(h), bcdToDec(min), bcdToDec(s));
+        }
+
+        function updateStepDisplay() {
             const totalStepsSpan = document.getElementById('totalStepsValue');
             const highStepsSpan = document.getElementById('highStepsValue');
-            const tableContainer = document.getElementById('tableContainer');
+            totalStepsSpan.innerText = Math.floor(window.totalSteps / 2);
+            highStepsSpan.innerText = Math.floor(window.highSteps / 2);
+        }
+
+        // ---------- 数据处理 ----------
+        function handleRxData(event) {
+            const value = event.target.value;
+            if (!value) return;
+
+            const fullBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+            console.log('Raw packet:', Array.from(fullBytes).map(b => b.toString(16).padStart(2,'0')).join(' '));
+
+            let offset = 0;
+            while (offset < fullBytes.length) {
+                const cmd = fullBytes[offset] & 0x7F;
+                
+                // 结束包检测 (cmd + 0xFF)
+                if (offset + 1 < fullBytes.length && fullBytes[offset+1] === 0xFF) {
+                    console.log(`End packet for command 0x${cmd.toString(16)}`);
+                    if (window.autoCollectActive && cmd === window.currentCommand) {
+                        finishCurrentCommand(window.isReportMode);
+                    }
+                    offset += 2;
+                    continue;
+                }
+
+                if (cmd === window.CMD_GET_DETAIL_STEPS) {
+                    if (offset + 27 > fullBytes.length) break;
+                    const rec = fullBytes.slice(offset, offset + 27);
+                    parse52(rec);
+                    offset += 27;
+                    if (window.autoCollectActive && cmd === window.currentCommand) {
+                        window.recordCount++;
+                        updateProgress(`Step details: received ${window.recordCount} records`);
+                        resetCommandTimeout(window.isReportMode);
+                    }
+                } else if (cmd === window.CMD_GET_ACC_INSTANT) {
+                    if (offset + 15 > fullBytes.length) break;
+                    const rec = fullBytes.slice(offset, offset + 15);
+                    parse53(rec);
+                    offset += 15;
+                    if (window.autoCollectActive && cmd === window.currentCommand) {
+                        window.recordCount++;
+                        updateProgress(`Instant ACC: received ${window.recordCount} records`);
+                        resetCommandTimeout(window.isReportMode);
+                    }
+                } else if (cmd === window.CMD_GET_BATTERY) {
+                    if (offset + 16 > fullBytes.length) break;
+                    const rec = fullBytes.slice(offset, offset + 16);
+                    parse13(rec);
+                    offset += 16;
+                } else if (cmd === window.CMD_GET_HISTORY_TOTAL) {
+                    if (offset + 26 > fullBytes.length) break;
+                    const rec = fullBytes.slice(offset, offset + 26);
+                    parse51(rec);
+                    offset += 26;
+                } else {
+                    offset++;
+                }
+            }
+        }
+
+        function parse13(bytes) {
+            if ((bytes[0] & 0x7F) !== window.CMD_GET_BATTERY) return;
+            const level = bytes[1];
+            if (level === 0) window.batteryLevel = 'Low';
+            else if (level === 1) window.batteryLevel = 'Normal';
+            else if (level === 2) window.batteryLevel = 'Full';
+            else window.batteryLevel = `Unknown(${level})`;
+            document.getElementById('batteryValue').innerText = window.batteryLevel;
+        }
+
+        function parse51(bytes) {
+            if ((bytes[0] & 0x7F) !== window.CMD_GET_HISTORY_TOTAL) return;
+            const id = bytes[1];
+            if (id === 0) {
+                window.totalSteps = parseUint32LE(bytes, 5);
+                window.highSteps = parseUint32LE(bytes, 22);
+                updateStepDisplay();
+            }
+        }
+
+        function parse52(bytes) {
+            if ((bytes[0] & 0x7F) !== window.CMD_GET_DETAIL_STEPS) return;
+            const year = bytes[3];
+            const month = bytes[4];
+            const day = bytes[5];
+            const hour = bytes[6];
+            const minute = bytes[7];
+            const second = bytes[8];
+            const startTime = bcdToDate(year, month, day, hour, minute, second);
+            const total = (bytes[9] | (bytes[10] << 8));
+            const high = (bytes[11] | (bytes[12] << 8));
+            window.stepsDetails.push({ startTime, totalSteps: total, highSteps: high });
+        }
+
+        function parse53(bytes) {
+            if ((bytes[0] & 0x7F) !== window.CMD_GET_ACC_INSTANT) return;
+            const year = bytes[3];
+            const month = bytes[4];
+            const day = bytes[5];
+            const hour = bytes[6];
+            const minute = bytes[7];
+            const second = bytes[8];
+            const time = bcdToDate(year, month, day, hour, minute, second);
+            const x = parseInt16LE(bytes, 9);
+            const y = parseInt16LE(bytes, 11);
+            const z = parseInt16LE(bytes, 13);
+            window.accInstant.push({ time, x, y, z });
+        }
+
+        // ---------- 自动采集流程 ----------
+        function resetCommandTimeout(reportMode) {
+            if (window.commandTimeout) clearTimeout(window.commandTimeout);
+            window.commandTimeout = setTimeout(() => {
+                console.log(`Command ${window.currentCommand} timeout, ending`);
+                finishCurrentCommand(reportMode);
+            }, 15000);
+        }
+
+        function startCommand(cmd, reportMode) {
+            if (window.stopRequested) {
+                finishAutoCollect(reportMode);
+                return;
+            }
+            window.currentCommand = cmd;
+            window.recordCount = 0;
+            updateProgress(`${cmd === window.CMD_GET_DETAIL_STEPS ? 'Step details' : 'Instant ACC'}: waiting for data...`);
+            sendCommand(cmd, [0x00]);
+            resetCommandTimeout(reportMode);
+        }
+
+        function finishCurrentCommand(reportMode) {
+            if (window.commandTimeout) clearTimeout(window.commandTimeout);
+            window.commandTimeout = null;
+            if (!window.autoCollectActive) return;
+            console.log(`Finished command: ${window.currentCommand}`);
+            if (window.currentCommand === window.CMD_GET_DETAIL_STEPS) {
+                startCommand(window.CMD_GET_ACC_INSTANT, reportMode);
+            } else if (window.currentCommand === window.CMD_GET_ACC_INSTANT) {
+                finishAutoCollect(reportMode);
+            }
+        }
+
+        function finishAutoCollect(reportMode) {
+            if (window.commandTimeout) clearTimeout(window.commandTimeout);
+            window.commandTimeout = null;
+            window.autoCollectActive = false;
+            window.currentCommand = null;
+            hideLoading();
+            
+            if (reportMode) {
+                generatePDFReport();  // 注意：这里直接调用全局函数
+                updateStatus('Report generated. You can generate another report if needed.');
+            } else {
+                updateStatus('Data collection completed. You can now generate a report.');
+            }
+        }
+
+        function stopCollect() {
+            if (window.autoCollectActive) {
+                window.stopRequested = true;
+                finishAutoCollect(window.isReportMode);
+            }
+        }
+
+        async function startAutoCollect(reportMode = false) {
+            window.stepsDetails = [];
+            window.accInstant = [];
+            window.stopRequested = false;
+            window.autoCollectActive = true;
+            window.isReportMode = reportMode;
+
+            showLoading('Connected and Collecting Data, Please wait');
+            startCommand(window.CMD_GET_DETAIL_STEPS, reportMode);
+        }
+
+        // ---------- 辅助：向下取整到10分钟 ----------
+        function floorTo10Minutes(date) {
+            const d = new Date(date);
+            const minutes = d.getMinutes();
+            const remainder = minutes % 10;
+            d.setMinutes(minutes - remainder);
+            d.setSeconds(0);
+            d.setMilliseconds(0);
+            return d;
+        }
+
+        // ---------- 格式化日期 ----------
+        function formatDate(d) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function formatDateTime(d) {
+            if (!d) return '';
+            const y = d.getFullYear();
+            const m = String(d.getMonth()+1).padStart(2,'0');
+            const d2 = String(d.getDate()).padStart(2,'0');
+            const h = String(d.getHours()).padStart(2,'0');
+            const min = String(d.getMinutes()).padStart(2,'0');
+            const s = String(d.getSeconds()).padStart(2,'0');
+            return `${y}-${m}-${d2} ${h}:${min}:${s}`;
+        }
+
+        // ---------- 合并数据生成综合表格 ----------
+        function mergeData() {
+            window.stepsDetails.sort((a,b) => a.startTime - b.startTime);
+            window.accInstant.sort((a,b) => a.time - b.time);
+
+            const merged = window.stepsDetails.map(step => {
+                const start = step.startTime;
+                const end = new Date(start.getTime() + 10*60*1000 - 1);
+                const mid = new Date(start.getTime() + 5*60*1000);
+                
+                const totalRaw = step.totalSteps;
+                const highRaw = step.highSteps;
+                let totalVal = Math.floor(totalRaw / 2);
+                let highVal = Math.floor(highRaw / 2);
+                
+                if (totalVal < highVal) {
+                    console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
+                    // 可选修正：totalVal = highVal;
+                }
+
+                let closestInstant = null;
+                let minDiff = Infinity;
+                for (let a of window.accInstant) {
+                    if (a.time >= start && a.time <= end) {
+                        const diff = Math.abs(a.time - mid);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closestInstant = a;
+                        }
+                    }
+                }
+                return {
+                    segmentStr: formatSegment(start),
+                    timestamp: start.getTime(),
+                    totalSteps: totalVal,
+                    highSteps: highVal,
+                    x: closestInstant ? closestInstant.x : '--',
+                    y: closestInstant ? closestInstant.y : '--',
+                    z: closestInstant ? closestInstant.z : '--'
+                };
+            });
+
+            merged.sort((a, b) => b.timestamp - a.timestamp);
+            renderTable(merged);
+            document.getElementById('tableContainer').style.display = 'block';
+            
+            console.log('mergeData finished, stepsDetails length =', window.stepsDetails.length);
+        }
+
+        function formatSegment(date) {
+            const d = floorTo10Minutes(date);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const hour = String(d.getHours()).padStart(2, '0');
+            const startMin = String(d.getMinutes()).padStart(2, '0');
+            const endMin = String(d.getMinutes() + 10).padStart(2, '0');
+            return `${year}-${month}-${day} ${hour}:${startMin}-${endMin}`;
+        }
+
+        function renderTable(data) {
             const tableBody = document.getElementById('tableBody');
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            const loadingMessage = document.getElementById('loadingMessage');
-            const progressDetail = document.getElementById('progressDetail');
-            const stopCollectBtn = document.getElementById('stopCollectBtn');
+            tableBody.innerHTML = '';
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${row.segmentStr}</td>
+                    <td>${row.totalSteps}</td>
+                    <td>${row.highSteps}</td>
+                    <td class="${row.x !== '--' && row.x < 0 ? 'acc-neg' : 'acc-pos'}">${row.x}</td>
+                    <td class="${row.y !== '--' && row.y < 0 ? 'acc-neg' : 'acc-pos'}">${row.y}</td>
+                    <td class="${row.z !== '--' && row.z < 0 ? 'acc-neg' : 'acc-pos'}">${row.z}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // ---------- 蓝牙操作 ----------
+        async function scanDevices() {
+            if (!navigator.bluetooth) {
+                alert('Web Bluetooth not supported. Please use Chrome, Edge, or Bluefy on iOS.');
+                return;
+            }
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: "Stride1850" }],
+                    optionalServices: [window.SERVICE_UUID]
+                });
+                window.bluetoothDevice = device;
+                updateStatus(`Connecting to ${device.name}...`);
+
+                await connectToDevice();
+            } catch (e) {
+                updateStatus('Scan cancelled or failed', true);
+            }
+        }
+
+        async function connectToDevice() {
+            if (!window.bluetoothDevice) return;
+            try {
+                window.gattServer = await window.bluetoothDevice.gatt.connect();
+                const service = await window.gattServer.getPrimaryService(window.SERVICE_UUID);
+                window.txChar = await service.getCharacteristic(window.TX_CHAR_UUID);
+                window.rxChar = await service.getCharacteristic(window.RX_CHAR_UUID);
+                await window.rxChar.startNotifications();
+                window.rxChar.addEventListener('characteristicvaluechanged', handleRxData);
+
+                await sendCommand(window.CMD_REAL_TIME_STEP, [0x01]);
+                await refreshData();
+
+                if (window.bluetoothDevice.name) {
+                    const name = window.bluetoothDevice.name;
+                    const match = name.match(/([A-F0-9]{4})$/i);
+                    document.getElementById('deviceIdValue').innerText = match ? match[1].toUpperCase() : name.slice(-4);
+                } else {
+                    document.getElementById('deviceIdValue').innerText = '----';
+                }
+
+                document.getElementById('dataSection').style.display = 'block';
+                updateStatus('Connected. Fetching all historical data...');
+
+                document.getElementById('scanBtn').innerText = '✅ Connected';
+                document.getElementById('scanBtn').style.backgroundColor = '#34c759';
+                document.getElementById('scanBtn').style.borderColor = '#34c759';
+                document.getElementById('scanBtn').style.color = 'white';
+                document.getElementById('scanBtn').disabled = true;
+
+                document.getElementById('disconnectBtn').disabled = false;
+
+                await startAutoCollect(true);
+            } catch (e) {
+                updateStatus('Connection failed: ' + e.message, true);
+            }
+        }
+
+        function disconnectDevice() {
+            if (window.bluetoothDevice && window.bluetoothDevice.gatt.connected) {
+                window.bluetoothDevice.gatt.disconnect();
+            }
+            document.getElementById('dataSection').style.display = 'none';
+            document.getElementById('tableContainer').style.display = 'none';
+            updateStatus('Disconnected');
+            document.getElementById('disconnectBtn').disabled = true;
+            window.autoCollectActive = false;
+            hideLoading();
+
+            document.getElementById('scanBtn').innerText = '🔍 Scan Sensor by Bluetooth and Connect';
+            document.getElementById('scanBtn').style.backgroundColor = '';
+            document.getElementById('scanBtn').style.borderColor = '';
+            document.getElementById('scanBtn').style.color = '';
+            document.getElementById('scanBtn').disabled = false;
+        }
+
+        async function refreshData() {
+            if (!window.txChar) {
+                alert('Please connect to a device first.');
+                return;
+            }
+            await sendCommand(window.CMD_GET_BATTERY);
+            await sendCommand(window.CMD_GET_HISTORY_TOTAL, [0x00]);
+            updateStatus('Basic data refreshed');
+        }
+
+        async function fetchDetailSteps() {
+            if (!window.txChar) {
+                alert('Please connect to a device first.');
+                return;
+            }
+            await sendCommand(window.CMD_GET_DETAIL_STEPS, [0x00]);
+            updateStatus('Step detail command sent');
+        }
+
+        async function fetchAcc() {
+            if (!window.txChar) {
+                alert('Please connect to a device first.');
+                return;
+            }
+            await sendCommand(window.CMD_GET_ACC_INSTANT, [0x00]);
+            updateStatus('ACC command sent');
+        }
+
+        // ---------- 全局PDF生成函数 ----------
+        async function generatePDFReport() {
+            console.log('=== PDF生成开始 (全局函数) ===');
+            console.log('stepsDetails长度:', window.stepsDetails.length);
+            if (window.stepsDetails.length === 0) {
+                console.log('无数据，启动自动采集');
+                startAutoCollect(true);
+                return;
+            }
+
             const startDateInput = document.getElementById('startDateInput');
             const endDateInput = document.getElementById('endDateInput');
+            const startDateStr = startDateInput.value;
+            const endDateStr = endDateInput.value;
+            if (!startDateStr || !endDateStr) {
+                alert('Please select start and end dates');
+                return;
+            }
+
+            const startDate = new Date(startDateStr + 'T00:00:00');
+            const endDate = new Date(endDateStr + 'T23:59:59.999');
+
+            // 生成所有需要显示的日期列表
+            const days = [];
+            let current = new Date(startDate);
+            while (current <= endDate) {
+                days.push(new Date(current));
+                current.setDate(current.getDate() + 1);
+            }
+            console.log('日期范围天数:', days.length);
+
+            // 构建步数映射
+            const stepsMap = new Map();
+            window.stepsDetails.forEach(step => {
+                const key = floorTo10Minutes(step.startTime).getTime();
+                stepsMap.set(key, step);
+            });
+            console.log('stepsMap大小:', stepsMap.size);
+
+            // 加速度数据排序
+            window.accInstant.sort((a, b) => a.time - b.time);
+
+            // 获取设备ID后四位
+            let deviceLast4 = '----';
+            if (window.bluetoothDevice && window.bluetoothDevice.name) {
+                const name = window.bluetoothDevice.name;
+                const match = name.match(/([A-F0-9]{4})$/i);
+                if (match) deviceLast4 = match[1].toUpperCase();
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+
             const pdfChartContainer = document.getElementById('pdfChartContainer');
+            pdfChartContainer.innerHTML = '';
 
-            // ---------- 初始化日期范围（最近28天） ----------
-            function initDateRange() {
-                const today = new Date();
-                const endDate = new Date(today);
-                const startDate = new Date(today);
-                startDate.setDate(today.getDate() - 28);
-                const formatDate = (d) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                };
-                startDateInput.value = formatDate(startDate);
-                endDateInput.value = formatDate(endDate);
-            }
-            initDateRange();
+            const pageWidth = 842;
+            const pageHeight = 595;
+            const margin = 20;
+            const headerY = 30;
+            const chartTop = 50;
+            const cols = 4;
+            const rows = 2;
+            const gap = 8;
+            const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
+            const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
 
-            // ---------- 辅助函数 ----------
-            function updateStatus(msg, isError = false) {
-                statusDiv.innerText = msg;
-                statusDiv.style.background = isError ? '#ffeeee' : '#ffffff';
+            function getWeekIndex(date) {
+                return (date.getDay() + 6) % 7;
             }
 
-            function showLoading(msg) {
-                loadingMessage.innerText = msg || 'Fetching device data...';
-                loadingOverlay.style.visibility = 'visible';
+            const weeks = [];
+            let i = 0;
+            while (i < days.length) {
+                const week = new Array(7).fill(null);
+                const firstDayOfWeek = new Date(days[i]);
+                firstDayOfWeek.setDate(days[i].getDate() - getWeekIndex(days[i]));
+                for (let j = 0; j < 7; j++) {
+                    const day = new Date(firstDayOfWeek);
+                    day.setDate(firstDayOfWeek.getDate() + j);
+                    if (i < days.length && days[i].toDateString() === day.toDateString()) {
+                        week[j] = days[i];
+                        i++;
+                    }
+                }
+                weeks.push(week);
             }
 
-            function hideLoading() {
-                loadingOverlay.style.visibility = 'hidden';
-            }
+            for (let w = 0; w < weeks.length; w++) {
+                const week = weeks[w];
+                const weekStart = week.find(d => d !== null);
+                const weekEnd = week.slice().reverse().find(d => d !== null);
+                if (!weekStart || !weekEnd) continue;
 
-            function updateProgress(detail) {
-                progressDetail.innerText = detail;
-            }
+                if (w > 0) doc.addPage();
 
-            function calcCRC(bytes) {
-                let sum = 0;
-                for (let i = 0; i < 15; i++) sum += bytes[i];
-                return sum & 0xFF;
-            }
+                doc.setFontSize(11);
+                const leftText = `BraceSense Report ${formatDate(weekStart)} to ${formatDate(weekEnd)} (ID:${deviceLast4})`;
+                const rightText = new Date().toLocaleString();
+                doc.text(leftText, margin, headerY);
+                doc.text(rightText, pageWidth - margin - doc.getTextWidth(rightText), headerY);
 
-            function buildCommand(cmd, params = []) {
-                const buffer = new ArrayBuffer(16);
-                const view = new Uint8Array(buffer);
-                view[0] = cmd;
-                for (let i = 0; i < params.length && i < 14; i++) view[1 + i] = params[i];
-                for (let i = 1 + params.length; i < 15; i++) view[i] = 0;
-                view[15] = calcCRC(view);
-                return buffer;
-            }
+                for (let idx = 0; idx < 7; idx++) {
+                    const day = week[idx];
+                    if (!day) continue;
 
-            async function sendCommand(cmd, params = []) {
-                if (!txChar) throw new Error('TX characteristic not available');
-                const buffer = buildCommand(cmd, params);
-                await txChar.writeValue(buffer);
-                console.log(`Command sent: 0x${cmd.toString(16)}`, params);
-            }
+                    const dateStr = formatDate(day);
+                    console.log(`\n处理日期: ${dateStr}`);
 
-            // ---------- 解析函数 ----------
-            function parseUint32LE(bytes, start) {
-                return bytes[start] | (bytes[start+1] << 8) | (bytes[start+2] << 16) | (bytes[start+3] << 24);
-            }
-            function parseInt16LE(bytes, start) {
-                let val = bytes[start] | (bytes[start+1] << 8);
-                if (val >= 0x8000) val -= 0x10000;
-                return val;
-            }
-            function bcdToDec(b) {
-                return ((b >> 4) * 10) + (b & 0x0F);
-            }
-            function bcdToDate(y, m, d, h, min, s) {
-                return new Date(2000 + bcdToDec(y), bcdToDec(m)-1, bcdToDec(d), bcdToDec(h), bcdToDec(min), bcdToDec(s));
-            }
+                    const totalData = [];
+                    const highData = [];
+                    const xData = [];
+                    const yData = [];
+                    const zData = [];
 
-            function updateStepDisplay() {
-                totalStepsSpan.innerText = Math.floor(totalSteps / 2);
-                highStepsSpan.innerText = Math.floor(highSteps / 2);
-            }
+                    for (let hour = 0; hour < 24; hour++) {
+                        for (let min = 0; min < 60; min += 10) {
+                            const pointTime = new Date(day);
+                            pointTime.setHours(hour, min, 0, 0);
+                            const pointKey = pointTime.getTime();
 
-            // ---------- 数据处理 ----------
-            function handleRxData(event) {
-                const value = event.target.value;
-                if (!value) return;
+                            const step = stepsMap.get(pointKey);
+                            const total = step ? Math.floor(step.totalSteps / 2) : null;
+                            const high = step ? Math.floor(step.highSteps / 2) : null;
+                            totalData.push(total);
+                            highData.push(high);
 
-                const fullBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-                console.log('Raw packet:', Array.from(fullBytes).map(b => b.toString(16).padStart(2,'0')).join(' '));
-
-                let offset = 0;
-                while (offset < fullBytes.length) {
-                    const cmd = fullBytes[offset] & 0x7F;
-                    
-                    // 结束包检测 (cmd + 0xFF)
-                    if (offset + 1 < fullBytes.length && fullBytes[offset+1] === 0xFF) {
-                        console.log(`End packet for command 0x${cmd.toString(16)}`);
-                        if (autoCollectActive && cmd === currentCommand) {
-                            finishCurrentCommand(isReportMode);
+                            const slotStart = pointTime;
+                            const slotEnd = new Date(pointTime.getTime() + 10 * 60 * 1000 - 1);
+                            const midTime = new Date(pointTime.getTime() + 5 * 60 * 1000);
+                            let closest = null;
+                            let minDiff = Infinity;
+                            for (let a of window.accInstant) {
+                                if (a.time >= slotStart && a.time <= slotEnd) {
+                                    const diff = Math.abs(a.time - midTime);
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        closest = a;
+                                    }
+                                }
+                            }
+                            xData.push(closest ? closest.x : null);
+                            yData.push(closest ? closest.y : null);
+                            zData.push(closest ? closest.z : null);
                         }
-                        offset += 2;
+                    }
+
+                    const nonNullTotal = totalData.filter(v => v !== null).length;
+                    const nonNullHigh = highData.filter(v => v !== null).length;
+                    const nonNullX = xData.filter(v => v !== null).length;
+                    console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
+
+                    const row = Math.floor(idx / cols);
+                    const col = idx % cols;
+                    const xPos = margin + col * (chartWidth + gap);
+                    const yPos = chartTop + row * (chartHeight + gap);
+
+                    if (nonNullTotal === 0 && nonNullX === 0) {
+                        doc.setFontSize(10);
+                        doc.text('No data for this date', xPos, yPos - 10);
                         continue;
                     }
 
-                    if (cmd === CMD_GET_DETAIL_STEPS) {
-                        if (offset + 27 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 27);
-                        parse52(rec);
-                        offset += 27;
-                        if (autoCollectActive && cmd === currentCommand) {
-                            recordCount++;
-                            updateProgress(`${getCommandName(cmd)}: received ${recordCount} records`);
-                            resetCommandTimeout(isReportMode);
+                    const allCounts = [...totalData, ...highData].filter(v => v !== null);
+                    const maxCount = allCounts.length > 0 ? Math.max(...allCounts) : 10;
+                    const leftMin = 0;
+                    const leftMax = Math.max(maxCount * 1.2, 10);
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 800;
+                    canvas.height = 400;
+                    canvas.style.width = '800px';
+                    canvas.style.height = '400px';
+                    pdfChartContainer.appendChild(canvas);
+
+                    const ctx = canvas.getContext('2d');
+                    const chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [],
+                            datasets: [
+                                { 
+                                    label: 'Total Swings', 
+                                    data: totalData, 
+                                    borderColor: 'rgba(54, 162, 235, 1)', 
+                                    backgroundColor: 'rgba(54, 162, 235, 0.1)', 
+                                    tension: 0.4, 
+                                    pointRadius: 1, 
+                                    borderWidth: 2, 
+                                    yAxisID: 'y'      
+                                },
+                                { 
+                                    label: 'High Int.', 
+                                    data: highData, 
+                                    borderColor: 'rgba(255, 99, 132, 1)', 
+                                    backgroundColor: 'rgba(255, 99, 132, 0.1)', 
+                                    tension: 0.4, 
+                                    pointRadius: 1, 
+                                    borderWidth: 2, 
+                                    yAxisID: 'y'      
+                                },
+                                { 
+                                    label: 'X', 
+                                    data: xData, 
+                                    borderColor: 'rgba(75, 192, 192, 1)', 
+                                    backgroundColor: 'rgba(75, 192, 192, 0.1)', 
+                                    tension: 0.4, 
+                                    pointRadius: 1, 
+                                    borderWidth: 1.5, 
+                                    yAxisID: 'y1'     
+                                },
+                                { 
+                                    label: 'Y', 
+                                    data: yData, 
+                                    borderColor: 'rgba(153, 102, 255, 1)', 
+                                    backgroundColor: 'rgba(153, 102, 255, 0.1)', 
+                                    tension: 0.4, 
+                                    pointRadius: 1, 
+                                    borderWidth: 1.5, 
+                                    yAxisID: 'y1'     
+                                },
+                                { 
+                                    label: 'Z', 
+                                    data: zData, 
+                                    borderColor: 'rgba(255, 159, 64, 1)', 
+                                    backgroundColor: 'rgba(255, 159, 64, 0.1)', 
+                                    tension: 0.4, 
+                                    pointRadius: 1, 
+                                    borderWidth: 1.5, 
+                                    yAxisID: 'y1'     
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: false,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: { enabled: false }
+                            },
+                            scales: {
+                                x: { display: false },
+                                y: {  
+                                    type: 'linear',
+                                    position: 'left',
+                                    min: leftMin,
+                                    max: leftMax,
+                                    ticks: { display: false },
+                                    grid: { display: false }
+                                },
+                                y1: { 
+                                    type: 'linear',
+                                    position: 'right',
+                                    min: -200,
+                                    max: 200,
+                                    ticks: { display: false },
+                                    grid: { display: false }
+                                }
+                            }
                         }
-                    } else if (cmd === CMD_GET_ACC_INSTANT) {
-                        if (offset + 15 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 15);
-                        parse53(rec);
-                        offset += 15;
-                        if (autoCollectActive && cmd === currentCommand) {
-                            recordCount++;
-                            updateProgress(`${getCommandName(cmd)}: received ${recordCount} records`);
-                            resetCommandTimeout(isReportMode);
-                        }
-                    } else if (cmd === CMD_GET_BATTERY) {
-                        if (offset + 16 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 16);
-                        parse13(rec);
-                        offset += 16;
-                    } else if (cmd === CMD_GET_HISTORY_TOTAL) {
-                        if (offset + 26 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 26);
-                        parse51(rec);
-                        offset += 26;
-                    } else {
-                        offset++;
-                    }
+                    });
+
+                    chart.update();
+                    await new Promise(resolve => setTimeout(resolve, 200));
+
+                    const imgData = canvas.toDataURL('image/png');
+                    doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
+
+                    doc.setFontSize(8);
+                    doc.setTextColor(0, 0, 0);
+                    doc.text(dateStr, xPos, yPos - 3);
+
+                    chart.destroy();
+                    pdfChartContainer.removeChild(canvas);
                 }
             }
 
-            function getCommandName(cmd) {
-                if (cmd === 0x52) return 'Step details';
-                if (cmd === 0x53) return 'Instant ACC';
-                return 'Unknown';
-            }
+            doc.save(`BraceSense_${deviceLast4}_${startDateStr}_${endDateStr}.pdf`);
+            updateStatus('Report generated successfully.');
+        }
 
-            function parse13(bytes) {
-                if ((bytes[0] & 0x7F) !== 0x13) return;
-                const level = bytes[1];
-                if (level === 0) batteryLevel = 'Low';
-                else if (level === 1) batteryLevel = 'Normal';
-                else if (level === 2) batteryLevel = 'Full';
-                else batteryLevel = `Unknown(${level})`;
-                batterySpan.innerText = batteryLevel;
-            }
+        // ---------- 更新本地时间 ----------
+        function updateLocalTime() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth()+1).padStart(2,'0');
+            const d = String(now.getDate()).padStart(2,'0');
+            document.getElementById('dateValue').innerText = `${y}-${m}-${d}`;
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            document.getElementById('timezoneLabel').innerText = `(${tz})`;
+        }
+        setInterval(updateLocalTime, 1000);
+        updateLocalTime();
 
-            function parse51(bytes) {
-                if ((bytes[0] & 0x7F) !== 0x51) return;
-                const id = bytes[1];
-                if (id === 0) {
-                    totalSteps = parseUint32LE(bytes, 5);
-                    highSteps = parseUint32LE(bytes, 22);
-                    updateStepDisplay();
-                }
-            }
+        // ---------- 事件绑定 ----------
+        document.getElementById('scanBtn').addEventListener('click', scanDevices);
+        document.getElementById('disconnectBtn').addEventListener('click', disconnectDevice);
+        document.getElementById('refreshBtn').addEventListener('click', refreshData);
+        document.getElementById('getDetailBtn').addEventListener('click', fetchDetailSteps);
+        document.getElementById('getAccBtn').addEventListener('click', fetchAcc);
+        document.getElementById('mergeBtn').addEventListener('click', mergeData);
+        // 注意：reportBtn 已经通过 onclick 属性绑定，不再需要 addEventListener，但保留也无妨，不过可能触发两次
+        // 我们确保只通过 onclick 调用，所以移除 addEventListener（如果需要，可以注释掉）
+        // document.getElementById('reportBtn').addEventListener('click', () => generatePDFReport());
+        document.getElementById('stopCollectBtn').addEventListener('click', stopCollect);
 
-            function parse52(bytes) {
-                if ((bytes[0] & 0x7F) !== 0x52) return;
-                const year = bytes[3];
-                const month = bytes[4];
-                const day = bytes[5];
-                const hour = bytes[6];
-                const minute = bytes[7];
-                const second = bytes[8];
-                const startTime = bcdToDate(year, month, day, hour, minute, second);
-                const total = (bytes[9] | (bytes[10] << 8));
-                const high = (bytes[11] | (bytes[12] << 8));
-                stepsDetails.push({ startTime, totalSteps: total, highSteps: high });
-            }
-
-            function parse53(bytes) {
-                if ((bytes[0] & 0x7F) !== 0x53) return;
-                const year = bytes[3];
-                const month = bytes[4];
-                const day = bytes[5];
-                const hour = bytes[6];
-                const minute = bytes[7];
-                const second = bytes[8];
-                const time = bcdToDate(year, month, day, hour, minute, second);
-                const x = parseInt16LE(bytes, 9);
-                const y = parseInt16LE(bytes, 11);
-                const z = parseInt16LE(bytes, 13);
-                accInstant.push({ time, x, y, z });
-            }
-
-            // ---------- 自动采集流程 ----------
-            function resetCommandTimeout(reportMode) {
-                if (commandTimeout) clearTimeout(commandTimeout);
-                commandTimeout = setTimeout(() => {
-                    console.log(`Command ${currentCommand} timeout, ending`);
-                    finishCurrentCommand(reportMode);
-                }, 15000);
-            }
-
-            function startCommand(cmd, reportMode) {
-                if (stopRequested) {
-                    finishAutoCollect(reportMode);
-                    return;
-                }
-                currentCommand = cmd;
-                recordCount = 0;
-                updateProgress(`${getCommandName(cmd)}: waiting for data...`);
-                sendCommand(cmd, [0x00]);
-                resetCommandTimeout(reportMode);
-            }
-
-            function finishCurrentCommand(reportMode) {
-                if (commandTimeout) clearTimeout(commandTimeout);
-                commandTimeout = null;
-                if (!autoCollectActive) return;
-                console.log(`Finished command: ${currentCommand}`);
-                if (currentCommand === CMD_GET_DETAIL_STEPS) {
-                    startCommand(CMD_GET_ACC_INSTANT, reportMode);
-                } else if (currentCommand === CMD_GET_ACC_INSTANT) {
-                    finishAutoCollect(reportMode);
-                }
-            }
-
-            function finishAutoCollect(reportMode) {
-                if (commandTimeout) clearTimeout(commandTimeout);
-                commandTimeout = null;
-                autoCollectActive = false;
-                currentCommand = null;
-                hideLoading();
-                
-                if (reportMode) {
-                    generateDateRangeReport(true);
-                    updateStatus('Report generated. You can generate another report if needed.');
-                } else {
-                    updateStatus('Data collection completed. You can now generate a report.');
-                }
-            }
-
-            function stopCollect() {
-                if (autoCollectActive) {
-                    stopRequested = true;
-                    finishAutoCollect(isReportMode);
-                }
-            }
-
-            async function startAutoCollect(reportMode = false) {
-                stepsDetails = [];
-                accInstant = [];
-                stopRequested = false;
-                autoCollectActive = true;
-                isReportMode = reportMode;
-
-                showLoading('Connected and Collecting Data, Please wait');
-                startCommand(CMD_GET_DETAIL_STEPS, reportMode);
-            }
-
-            // ---------- 辅助：向下取整到10分钟 ----------
-            function floorTo10Minutes(date) {
-                const d = new Date(date);
-                const minutes = d.getMinutes();
-                const remainder = minutes % 10;
-                d.setMinutes(minutes - remainder);
-                d.setSeconds(0);
-                d.setMilliseconds(0);
-                return d;
-            }
-
-            // ---------- 格式化日期 ----------
-            function formatDate(d) {
+        // 初始化日期范围
+        (function initDateRange() {
+            const today = new Date();
+            const endDate = new Date(today);
+            const startDate = new Date(today);
+            startDate.setDate(today.getDate() - 28);
+            const formatDate = (d) => {
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 return `${y}-${m}-${day}`;
-            }
-
-            function formatDateTime(d) {
-                if (!d) return '';
-                const y = d.getFullYear();
-                const m = String(d.getMonth()+1).padStart(2,'0');
-                const d2 = String(d.getDate()).padStart(2,'0');
-                const h = String(d.getHours()).padStart(2,'0');
-                const min = String(d.getMinutes()).padStart(2,'0');
-                const s = String(d.getSeconds()).padStart(2,'0');
-                return `${y}-${m}-${d2} ${h}:${min}:${s}`;
-            }
-
-            // ---------- 合并数据生成综合表格 ----------
-            function mergeData() {
-                // 强制暴露变量（在最开头就暴露）
-                window.stepsDetails = stepsDetails;
-                window.accInstant = accInstant;
-                console.log('mergeData started, stepsDetails length =', stepsDetails.length);
-                
-                stepsDetails.sort((a,b) => a.startTime - b.startTime);
-                accInstant.sort((a,b) => a.time - b.time);
-
-                const merged = stepsDetails.map(step => {
-                    const start = step.startTime;
-                    const end = new Date(start.getTime() + 10*60*1000 - 1);
-                    const mid = new Date(start.getTime() + 5*60*1000);
-                    
-                    const totalRaw = step.totalSteps;
-                    const highRaw = step.highSteps;
-                    let totalVal = Math.floor(totalRaw / 2);
-                    let highVal = Math.floor(highRaw / 2);
-                    
-                    if (totalVal < highVal) {
-                        console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
-                        // 可选修正：totalVal = highVal;
-                    }
-
-                    let closestInstant = null;
-                    let minDiff = Infinity;
-                    for (let a of accInstant) {
-                        if (a.time >= start && a.time <= end) {
-                            const diff = Math.abs(a.time - mid);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestInstant = a;
-                            }
-                        }
-                    }
-                    return {
-                        segmentStr: formatSegment(start),
-                        timestamp: start.getTime(),
-                        totalSteps: totalVal,
-                        highSteps: highVal,
-                        x: closestInstant ? closestInstant.x : '--',
-                        y: closestInstant ? closestInstant.y : '--',
-                        z: closestInstant ? closestInstant.z : '--'
-                    };
-                });
-
-                merged.sort((a, b) => b.timestamp - a.timestamp);
-                renderTable(merged);
-                tableContainer.style.display = 'block';
-                
-                // 再次暴露（确保）
-                window.stepsDetails = stepsDetails;
-                window.accInstant = accInstant;
-                console.log('mergeData finished, stepsDetails length =', stepsDetails.length);
-            }
-
-            function formatSegment(date) {
-                const d = floorTo10Minutes(date);
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                const hour = String(d.getHours()).padStart(2, '0');
-                const startMin = String(d.getMinutes()).padStart(2, '0');
-                const endMin = String(d.getMinutes() + 10).padStart(2, '0');
-                return `${year}-${month}-${day} ${hour}:${startMin}-${endMin}`;
-            }
-
-            function renderTable(data) {
-                tableBody.innerHTML = '';
-                data.forEach(row => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${row.segmentStr}</td>
-                        <td>${row.totalSteps}</td>
-                        <td>${row.highSteps}</td>
-                        <td class="${row.x !== '--' && row.x < 0 ? 'acc-neg' : 'acc-pos'}">${row.x}</td>
-                        <td class="${row.y !== '--' && row.y < 0 ? 'acc-neg' : 'acc-pos'}">${row.y}</td>
-                        <td class="${row.z !== '--' && row.z < 0 ? 'acc-neg' : 'acc-pos'}">${row.z}</td>
-                    `;
-                    tableBody.appendChild(tr);
-                });
-            }
-
-            // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，增强调试，已暴露为全局并添加错误捕获）----------
-            window.generateDateRangeReport = async function generateDateRangeReport(fromAuto = false) {
-                try {
-                    // 强制暴露变量
-                    window.stepsDetails = stepsDetails;
-                    window.accInstant = accInstant;
-                    console.log('=== PDF生成开始 ===');
-                    console.log('stepsDetails长度 (内部):', stepsDetails.length);
-                    if (stepsDetails.length > 0) {
-                        console.log('第一条记录:', stepsDetails[0]);
-                        console.log('包含的日期 (前5个):', stepsDetails.map(s => s.startTime.toLocaleDateString()).slice(0, 5));
-                    }
-                    
-                    if (!fromAuto && stepsDetails.length === 0) {
-                        console.log('无数据，启动自动采集');
-                        startAutoCollect(true);
-                        return;
-                    }
-
-                    const startDateStr = startDateInput.value;
-                    const endDateStr = endDateInput.value;
-                    if (!startDateStr || !endDateStr) {
-                        alert('Please select start and end dates');
-                        return;
-                    }
-
-                    const startDate = new Date(startDateStr + 'T00:00:00');
-                    const endDate = new Date(endDateStr + 'T23:59:59.999');
-
-                    // 生成所有需要显示的日期列表（每一天）
-                    const days = [];
-                    let current = new Date(startDate);
-                    while (current <= endDate) {
-                        days.push(new Date(current));
-                        current.setDate(current.getDate() + 1);
-                    }
-                    console.log('日期范围天数:', days.length);
-
-                    // 构建步数映射（按10分钟起点的时间戳）
-                    const stepsMap = new Map();
-                    stepsDetails.forEach(step => {
-                        const key = floorTo10Minutes(step.startTime).getTime();
-                        stepsMap.set(key, step);
-                    });
-                    console.log('stepsMap大小:', stepsMap.size);
-
-                    // 加速度数据排序
-                    accInstant.sort((a, b) => a.time - b.time);
-
-                    // 获取设备ID后四位
-                    let deviceLast4 = '----';
-                    if (bluetoothDevice && bluetoothDevice.name) {
-                        const name = bluetoothDevice.name;
-                        const match = name.match(/([A-F0-9]{4})$/i);
-                        if (match) deviceLast4 = match[1].toUpperCase();
-                    }
-
-                    const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-
-                    // 清空隐藏容器
-                    pdfChartContainer.innerHTML = '';
-
-                    // 横版参数：A4横版尺寸 842 x 595
-                    const pageWidth = 842;
-                    const pageHeight = 595;
-                    const margin = 20;
-                    const headerY = 30;
-                    const chartTop = 50;
-                    const cols = 4;
-                    const rows = 2;
-                    const gap = 8;
-                    const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
-                    const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
-
-                    // 辅助函数：将日期转换为周几索引（周一=0 ... 周日=6）
-                    function getWeekIndex(date) {
-                        return (date.getDay() + 6) % 7;
-                    }
-
-                    // 将天数按周分组，每组最多7天，空缺位置用 null 填充
-                    const weeks = [];
-                    let i = 0;
-                    while (i < days.length) {
-                        const week = new Array(7).fill(null);
-                        const firstDayOfWeek = new Date(days[i]);
-                        firstDayOfWeek.setDate(days[i].getDate() - getWeekIndex(days[i]));
-                        for (let j = 0; j < 7; j++) {
-                            const day = new Date(firstDayOfWeek);
-                            day.setDate(firstDayOfWeek.getDate() + j);
-                            if (i < days.length && days[i].toDateString() === day.toDateString()) {
-                                week[j] = days[i];
-                                i++;
-                            }
-                        }
-                        weeks.push(week);
-                    }
-
-                    // 遍历每一周，生成一页PDF
-                    for (let w = 0; w < weeks.length; w++) {
-                        const week = weeks[w];
-                        const weekStart = week.find(d => d !== null);
-                        const weekEnd = week.slice().reverse().find(d => d !== null);
-                        if (!weekStart || !weekEnd) continue;
-
-                        if (w > 0) doc.addPage();
-
-                        // 头部：左侧报告信息，右侧生成时间
-                        doc.setFontSize(11);
-                        const leftText = `BraceSense Report ${formatDate(weekStart)} to ${formatDate(weekEnd)} (ID:${deviceLast4})`;
-                        const rightText = new Date().toLocaleString();
-                        doc.text(leftText, margin, headerY);
-                        doc.text(rightText, pageWidth - margin - doc.getTextWidth(rightText), headerY);
-
-                        // 遍历一周的7个位置（只放有数据的）
-                        for (let idx = 0; idx < 7; idx++) {
-                            const day = week[idx];
-                            if (!day) continue;
-
-                            const dateStr = formatDate(day);
-                            console.log(`\n处理日期: ${dateStr}`);
-
-                            // 生成144个时间点数据
-                            const totalData = [];
-                            const highData = [];
-                            const xData = [];
-                            const yData = [];
-                            const zData = [];
-
-                            for (let hour = 0; hour < 24; hour++) {
-                                for (let min = 0; min < 60; min += 10) {
-                                    const pointTime = new Date(day);
-                                    pointTime.setHours(hour, min, 0, 0);
-                                    const pointKey = pointTime.getTime();
-
-                                    const step = stepsMap.get(pointKey);
-                                    const total = step ? Math.floor(step.totalSteps / 2) : null;
-                                    const high = step ? Math.floor(step.highSteps / 2) : null;
-                                    totalData.push(total);
-                                    highData.push(high);
-
-                                    const slotStart = pointTime;
-                                    const slotEnd = new Date(pointTime.getTime() + 10 * 60 * 1000 - 1);
-                                    const midTime = new Date(pointTime.getTime() + 5 * 60 * 1000);
-                                    let closest = null;
-                                    let minDiff = Infinity;
-                                    for (let a of accInstant) {
-                                        if (a.time >= slotStart && a.time <= slotEnd) {
-                                            const diff = Math.abs(a.time - midTime);
-                                            if (diff < minDiff) {
-                                                minDiff = diff;
-                                                closest = a;
-                                            }
-                                        }
-                                    }
-                                    xData.push(closest ? closest.x : null);
-                                    yData.push(closest ? closest.y : null);
-                                    zData.push(closest ? closest.z : null);
-                                }
-                            }
-
-                            // 调试输出：每天的数据点数量
-                            const nonNullTotal = totalData.filter(v => v !== null).length;
-                            const nonNullHigh = highData.filter(v => v !== null).length;
-                            const nonNullX = xData.filter(v => v !== null).length;
-                            console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
-
-                            // 计算图表位置（需要先定义xPos, yPos）
-                            const row = Math.floor(idx / cols);
-                            const col = idx % cols;
-                            const xPos = margin + col * (chartWidth + gap);
-                            const yPos = chartTop + row * (chartHeight + gap);
-
-                            // 如果当天没有任何数据，跳过绘图并在页面显示提示
-                            if (nonNullTotal === 0 && nonNullX === 0) {
-                                doc.setFontSize(10);
-                                doc.text('No data for this date', xPos, yPos - 10);
-                                continue;
-                            }
-
-                            // 计算左侧Y轴范围
-                            const allCounts = [...totalData, ...highData].filter(v => v !== null);
-                            const maxCount = allCounts.length > 0 ? Math.max(...allCounts) : 10;
-                            const leftMin = 0;
-                            const leftMax = Math.max(maxCount * 1.2, 10);
-
-                            // 创建 canvas
-                            const canvas = document.createElement('canvas');
-                            canvas.width = 800;
-                            canvas.height = 400;
-                            canvas.style.width = '800px';
-                            canvas.style.height = '400px';
-                            pdfChartContainer.appendChild(canvas);
-
-                            const ctx = canvas.getContext('2d');
-                            const chart = new Chart(ctx, {
-                                type: 'line',
-                                data: {
-                                    labels: [],
-                                    datasets: [
-                                        { 
-                                            label: 'Total Swings', 
-                                            data: totalData, 
-                                            borderColor: 'rgba(54, 162, 235, 1)', 
-                                            backgroundColor: 'rgba(54, 162, 235, 0.1)', 
-                                            tension: 0.4, 
-                                            pointRadius: 1,          // 显示点，确保可见
-                                            borderWidth: 2, 
-                                            yAxisID: 'y'      
-                                        },
-                                        { 
-                                            label: 'High Int.', 
-                                            data: highData, 
-                                            borderColor: 'rgba(255, 99, 132, 1)', 
-                                            backgroundColor: 'rgba(255, 99, 132, 0.1)', 
-                                            tension: 0.4, 
-                                            pointRadius: 1, 
-                                            borderWidth: 2, 
-                                            yAxisID: 'y'      
-                                        },
-                                        { 
-                                            label: 'X', 
-                                            data: xData, 
-                                            borderColor: 'rgba(75, 192, 192, 1)', 
-                                            backgroundColor: 'rgba(75, 192, 192, 0.1)', 
-                                            tension: 0.4, 
-                                            pointRadius: 1, 
-                                            borderWidth: 1.5, 
-                                            yAxisID: 'y1'     
-                                        },
-                                        { 
-                                            label: 'Y', 
-                                            data: yData, 
-                                            borderColor: 'rgba(153, 102, 255, 1)', 
-                                            backgroundColor: 'rgba(153, 102, 255, 0.1)', 
-                                            tension: 0.4, 
-                                            pointRadius: 1, 
-                                            borderWidth: 1.5, 
-                                            yAxisID: 'y1'     
-                                        },
-                                        { 
-                                            label: 'Z', 
-                                            data: zData, 
-                                            borderColor: 'rgba(255, 159, 64, 1)', 
-                                            backgroundColor: 'rgba(255, 159, 64, 0.1)', 
-                                            tension: 0.4, 
-                                            pointRadius: 1, 
-                                            borderWidth: 1.5, 
-                                            yAxisID: 'y1'     
-                                        }
-                                    ]
-                                },
-                                options: {
-                                    responsive: false,
-                                    maintainAspectRatio: false,
-                                    plugins: {
-                                        legend: { display: false },
-                                        tooltip: { enabled: false }
-                                    },
-                                    scales: {
-                                        x: { display: false },
-                                        y: {  
-                                            type: 'linear',
-                                            position: 'left',
-                                            min: leftMin,
-                                            max: leftMax,
-                                            ticks: { display: false },
-                                            grid: { display: false }
-                                        },
-                                        y1: { 
-                                            type: 'linear',
-                                            position: 'right',
-                                            min: -200,
-                                            max: 200,
-                                            ticks: { display: false },
-                                            grid: { display: false }
-                                        }
-                                    }
-                                }
-                            });
-
-                            chart.update();
-                            await new Promise(resolve => setTimeout(resolve, 200));
-
-                            const imgData = canvas.toDataURL('image/png');
-
-                            doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
-
-                            // 在图表上方添加日期标签
-                            doc.setFontSize(8);
-                            doc.setTextColor(0, 0, 0);
-                            doc.text(dateStr, xPos, yPos - 3);
-
-                            chart.destroy();
-                            pdfChartContainer.removeChild(canvas);
-                        }
-                    }
-
-                    doc.save(`BraceSense_${deviceLast4}_${startDateStr}_${endDateStr}.pdf`);
-                    updateStatus('Report generated successfully.');
-                } catch (e) {
-                    console.error('PDF生成出错:', e);
-                    alert('PDF生成出错: ' + e.message);
-                }
-            }
-
-            // ---------- 更新本地时间 ----------
-            function updateLocalTime() {
-                const now = new Date();
-                const y = now.getFullYear();
-                const m = String(now.getMonth()+1).padStart(2,'0');
-                const d = String(now.getDate()).padStart(2,'0');
-                dateSpan.innerText = `${y}-${m}-${d}`;
-                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                timezoneLabel.innerText = `(${tz})`;
-            }
-            setInterval(updateLocalTime, 1000);
-            updateLocalTime();
-
-            // ---------- 蓝牙操作 ----------
-            async function scanDevices() {
-                if (!navigator.bluetooth) {
-                    alert('Web Bluetooth not supported. Please use Chrome, Edge, or Bluefy on iOS.');
-                    return;
-                }
-                try {
-                    const device = await navigator.bluetooth.requestDevice({
-                        filters: [{ namePrefix: "Stride1850" }],
-                        optionalServices: [SERVICE_UUID]
-                    });
-                    bluetoothDevice = device;
-                    updateStatus(`Connecting to ${device.name}...`);
-
-                    await connectToDevice();
-                } catch (e) {
-                    updateStatus('Scan cancelled or failed', true);
-                }
-            }
-
-            async function connectToDevice() {
-                if (!bluetoothDevice) return;
-                try {
-                    gattServer = await bluetoothDevice.gatt.connect();
-                    const service = await gattServer.getPrimaryService(SERVICE_UUID);
-                    txChar = await service.getCharacteristic(TX_CHAR_UUID);
-                    rxChar = await service.getCharacteristic(RX_CHAR_UUID);
-                    await rxChar.startNotifications();
-                    rxChar.addEventListener('characteristicvaluechanged', handleRxData);
-
-                    await sendCommand(CMD_REAL_TIME_STEP, [0x01]);
-                    await refreshData();
-
-                    if (bluetoothDevice.name) {
-                        const name = bluetoothDevice.name;
-                        const match = name.match(/([A-F0-9]{4})$/i);
-                        deviceIdSpan.innerText = match ? match[1].toUpperCase() : name.slice(-4);
-                    } else {
-                        deviceIdSpan.innerText = '----';
-                    }
-
-                    dataSection.style.display = 'block';
-                    updateStatus('Connected. Fetching all historical data...');
-
-                    scanBtn.innerText = '✅ Connected';
-                    scanBtn.style.backgroundColor = '#34c759';
-                    scanBtn.style.borderColor = '#34c759';
-                    scanBtn.style.color = 'white';
-                    scanBtn.disabled = true;
-
-                    disconnectBtn.disabled = false;
-
-                    await startAutoCollect(true);
-                } catch (e) {
-                    updateStatus('Connection failed: ' + e.message, true);
-                }
-            }
-
-            function disconnectDevice() {
-                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                    bluetoothDevice.gatt.disconnect();
-                }
-                dataSection.style.display = 'none';
-                tableContainer.style.display = 'none';
-                updateStatus('Disconnected');
-                disconnectBtn.disabled = true;
-                autoCollectActive = false;
-                hideLoading();
-
-                scanBtn.innerText = '🔍 Scan Sensor by Bluetooth and Connect';
-                scanBtn.style.backgroundColor = '';
-                scanBtn.style.borderColor = '';
-                scanBtn.style.color = '';
-                scanBtn.disabled = false;
-            }
-
-            async function refreshData() {
-                if (!txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(CMD_GET_BATTERY);
-                await sendCommand(CMD_GET_HISTORY_TOTAL, [0x00]);
-                updateStatus('Basic data refreshed');
-            }
-
-            async function fetchDetailSteps() {
-                if (!txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(CMD_GET_DETAIL_STEPS, [0x00]);
-                updateStatus('Step detail command sent');
-            }
-
-            async function fetchAcc() {
-                if (!txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(CMD_GET_ACC_INSTANT, [0x00]);
-                updateStatus('ACC command sent');
-            }
-
-            // 事件绑定
-            scanBtn.addEventListener('click', scanDevices);
-            disconnectBtn.addEventListener('click', disconnectDevice);
-            refreshBtn.addEventListener('click', refreshData);
-            getDetailBtn.addEventListener('click', fetchDetailSteps);
-            getAccBtn.addEventListener('click', fetchAcc);
-            mergeBtn.addEventListener('click', mergeData);
-            reportBtn.addEventListener('click', () => generateDateRangeReport(false));
-            stopCollectBtn.addEventListener('click', stopCollect);
-
-            // 初始状态
-            disconnectBtn.disabled = true;
-
-            // 暴露变量到全局（备用）
-            window.stepsDetails = stepsDetails;
-            window.accInstant = accInstant;
-            console.log('Initial stepsDetails length:', stepsDetails.length);
+            };
+            document.getElementById('startDateInput').value = formatDate(startDate);
+            document.getElementById('endDateInput').value = formatDate(endDate);
         })();
+
+        // 初始状态
+        document.getElementById('disconnectBtn').disabled = true;
+
+        console.log('脚本初始化完成');
     </script>
 </body>
 </html>
