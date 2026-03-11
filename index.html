@@ -641,10 +641,17 @@
                 });
             }
 
-            // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，带调试输出）----------
+            // ---------- 生成PDF报告（横版，每页2行4列，最多7天，带日期标签，增强调试）----------
             async function generateDateRangeReport(fromAuto = false) {
+                // 强制暴露变量到控制台
+                window.stepsDetails = stepsDetails;
+                window.accInstant = accInstant;
                 console.log('=== PDF生成开始 ===');
-                console.log('stepsDetails length:', stepsDetails.length);
+                console.log('stepsDetails长度:', stepsDetails.length);
+                if (stepsDetails.length > 0) {
+                    console.log('第一条步数记录:', stepsDetails[0]);
+                    console.log('包含的日期:', stepsDetails.map(s => s.startTime.toLocaleDateString()).slice(0, 5));
+                }
                 
                 if (!fromAuto && stepsDetails.length === 0) {
                     console.log('无数据，启动自动采集');
@@ -677,7 +684,7 @@
                     const key = floorTo10Minutes(step.startTime).getTime();
                     stepsMap.set(key, step);
                 });
-                console.log('stepsMap size:', stepsMap.size);
+                console.log('stepsMap大小:', stepsMap.size);
 
                 // 加速度数据排序
                 accInstant.sort((a, b) => a.time - b.time);
@@ -797,7 +804,15 @@
                         // 调试输出：每天的数据点数量
                         const nonNullTotal = totalData.filter(v => v !== null).length;
                         const nonNullHigh = highData.filter(v => v !== null).length;
-                        console.log(`  total non-null = ${nonNullTotal}, high non-null = ${nonNullHigh}`);
+                        const nonNullX = xData.filter(v => v !== null).length;
+                        console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
+
+                        // 如果当天没有任何数据，跳过绘图并在页面显示提示
+                        if (nonNullTotal === 0 && nonNullX === 0) {
+                            doc.setFontSize(10);
+                            doc.text('No data for this date', margin + idx * 200, chartTop + 50);
+                            continue;
+                        }
 
                         // 计算左侧Y轴范围
                         const allCounts = [...totalData, ...highData].filter(v => v !== null);
@@ -825,9 +840,9 @@
                                         borderColor: 'rgba(54, 162, 235, 1)', 
                                         backgroundColor: 'rgba(54, 162, 235, 0.1)', 
                                         tension: 0.4, 
-                                        pointRadius: 0.6, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y'      // 左轴
+                                        pointRadius: 1,          // 显示点，确保可见
+                                        borderWidth: 2, 
+                                        yAxisID: 'y'      
                                     },
                                     { 
                                         label: 'High Int.', 
@@ -835,9 +850,9 @@
                                         borderColor: 'rgba(255, 99, 132, 1)', 
                                         backgroundColor: 'rgba(255, 99, 132, 0.1)', 
                                         tension: 0.4, 
-                                        pointRadius: 0.6, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y'      // 左轴
+                                        pointRadius: 1, 
+                                        borderWidth: 2, 
+                                        yAxisID: 'y'      
                                     },
                                     { 
                                         label: 'X', 
@@ -845,9 +860,9 @@
                                         borderColor: 'rgba(75, 192, 192, 1)', 
                                         backgroundColor: 'rgba(75, 192, 192, 0.1)', 
                                         tension: 0.4, 
-                                        pointRadius: 0.4, 
-                                        borderWidth: 1, 
-                                        yAxisID: 'y1'     // 右轴
+                                        pointRadius: 1, 
+                                        borderWidth: 1.5, 
+                                        yAxisID: 'y1'     
                                     },
                                     { 
                                         label: 'Y', 
@@ -855,9 +870,9 @@
                                         borderColor: 'rgba(153, 102, 255, 1)', 
                                         backgroundColor: 'rgba(153, 102, 255, 0.1)', 
                                         tension: 0.4, 
-                                        pointRadius: 0.4, 
-                                        borderWidth: 1, 
-                                        yAxisID: 'y1'     // 右轴
+                                        pointRadius: 1, 
+                                        borderWidth: 1.5, 
+                                        yAxisID: 'y1'     
                                     },
                                     { 
                                         label: 'Z', 
@@ -865,9 +880,9 @@
                                         borderColor: 'rgba(255, 159, 64, 1)', 
                                         backgroundColor: 'rgba(255, 159, 64, 0.1)', 
                                         tension: 0.4, 
-                                        pointRadius: 0.4, 
-                                        borderWidth: 1, 
-                                        yAxisID: 'y1'     // 右轴
+                                        pointRadius: 1, 
+                                        borderWidth: 1.5, 
+                                        yAxisID: 'y1'     
                                     }
                                 ]
                             },
@@ -880,7 +895,7 @@
                                 },
                                 scales: {
                                     x: { display: false },
-                                    y: {  // 左轴
+                                    y: {  
                                         type: 'linear',
                                         position: 'left',
                                         min: leftMin,
@@ -888,7 +903,7 @@
                                         ticks: { display: false },
                                         grid: { display: false }
                                     },
-                                    y1: { // 右轴
+                                    y1: { 
                                         type: 'linear',
                                         position: 'right',
                                         min: -200,
