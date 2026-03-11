@@ -10,7 +10,7 @@
     <!-- Chart.js for PDF charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        /* 样式部分保持不变，为节省篇幅已简化，实际使用时请复制之前的完整样式 */
+        /* 完整样式，与之前相同，此处省略以节省篇幅，实际使用时请保留之前提供的完整样式 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; display: flex; flex-direction: column; align-items: center; }
         .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; }
@@ -143,7 +143,7 @@
             <button id="disconnectBtn" disabled class="secondary">⛔ Disconnect</button>
         </div>
 
-        <!-- 日期范围与生成报告按钮（使用 onclick 直接调用全局函数） -->
+        <!-- 日期范围与生成报告按钮 -->
         <div class="date-range">
             <div class="date-item">
                 <label>Start:</label>
@@ -214,16 +214,16 @@
     </div>
 
     <script>
-        // 全局错误捕获，确保任何错误都会输出到控制台
+        // 全局错误捕获
         window.addEventListener('error', function(e) {
-            console.error('捕获到全局错误:', e.error || e.message);
+            console.error('全局错误:', e.error || e.message);
         });
 
-        // 将所有初始化和事件绑定放在 DOMContentLoaded 中，确保元素已存在
+        // 所有初始化放在 DOMContentLoaded 中
         window.addEventListener('DOMContentLoaded', function() {
             console.log('DOM已加载，开始初始化...');
 
-            // 检查关键元素是否存在，如果缺失则输出错误并停止
+            // 检查关键元素是否存在
             const requiredIds = [
                 'stopCollectBtn', 'loadingOverlay', 'pdfChartContainer',
                 'scanBtn', 'disconnectBtn', 'refreshBtn', 'getDetailBtn', 'getAccBtn', 'mergeBtn',
@@ -236,12 +236,12 @@
             for (let id of requiredIds) {
                 if (!document.getElementById(id)) {
                     console.error(`错误: 缺少必要元素 #${id}`);
-                    return; // 停止初始化
+                    return;
                 }
             }
             console.log('所有必要元素存在，继续初始化...');
 
-            // ---------- 全局变量（挂载到 window） ----------
+            // ---------- 全局变量 ----------
             window.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
             window.TX_CHAR_UUID = '0000fff6-0000-1000-8000-00805f9b34fb';
             window.RX_CHAR_UUID = '0000fff7-0000-1000-8000-00805f9b34fb';
@@ -252,20 +252,16 @@
             window.CMD_GET_DETAIL_STEPS = 0x52;
             window.CMD_GET_ACC_INSTANT = 0x53;
 
-            // 数据存储
             window.bluetoothDevice = null;
             window.gattServer = null;
             window.txChar = null;
             window.rxChar = null;
-
             window.totalSteps = 0;
             window.highSteps = 0;
             window.batteryLevel = '--';
-            
             window.stepsDetails = [];
             window.accInstant = [];
 
-            // 自动采集状态
             window.autoCollectActive = false;
             window.currentCommand = null;
             window.commandTimeout = null;
@@ -358,7 +354,6 @@
                 while (offset < fullBytes.length) {
                     const cmd = fullBytes[offset] & 0x7F;
                     
-                    // 结束包检测 (cmd + 0xFF)
                     if (offset + 1 < fullBytes.length && fullBytes[offset+1] === 0xFF) {
                         console.log(`End packet for command 0x${cmd.toString(16)}`);
                         if (window.autoCollectActive && cmd === window.currentCommand) {
@@ -494,7 +489,7 @@
                 hideLoading();
                 
                 if (reportMode) {
-                    generatePDFReport();  // 注意：这里直接调用全局函数
+                    generatePDFReport();
                     updateStatus('Report generated. You can generate another report if needed.');
                 } else {
                     updateStatus('Data collection completed. You can now generate a report.');
@@ -519,7 +514,7 @@
                 startCommand(window.CMD_GET_DETAIL_STEPS, reportMode);
             }
 
-            // ---------- 辅助：向下取整到10分钟 ----------
+            // ---------- 辅助函数 ----------
             function floorTo10Minutes(date) {
                 const d = new Date(date);
                 const minutes = d.getMinutes();
@@ -530,7 +525,6 @@
                 return d;
             }
 
-            // ---------- 格式化日期 ----------
             function formatDate(d) {
                 const y = d.getFullYear();
                 const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -549,7 +543,7 @@
                 return `${y}-${m}-${d2} ${h}:${min}:${s}`;
             }
 
-            // ---------- 合并数据生成综合表格 ----------
+            // ---------- 综合表格 ----------
             function mergeData() {
                 window.stepsDetails.sort((a,b) => a.startTime - b.startTime);
                 window.accInstant.sort((a,b) => a.time - b.time);
@@ -566,7 +560,6 @@
                     
                     if (totalVal < highVal) {
                         console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
-                        // 可选修正：totalVal = highVal;
                     }
 
                     let closestInstant = null;
@@ -594,7 +587,6 @@
                 merged.sort((a, b) => b.timestamp - a.timestamp);
                 renderTable(merged);
                 document.getElementById('tableContainer').style.display = 'block';
-                
                 console.log('mergeData finished, stepsDetails length =', window.stepsDetails.length);
             }
 
@@ -730,7 +722,7 @@
                 updateStatus('ACC command sent');
             }
 
-            // ---------- 全局PDF生成函数 ----------
+            // ---------- 全局PDF生成函数（最终修复版）----------
             window.generatePDFReport = async function generatePDFReport() {
                 console.log('=== PDF生成开始 (全局函数) ===');
                 console.log('stepsDetails长度:', window.stepsDetails.length);
@@ -796,6 +788,7 @@
                 const gap = 8;
                 const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
                 const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
+                console.log('图表尺寸:', chartWidth, chartHeight);
 
                 function getWeekIndex(date) {
                     return (date.getDay() + 6) % 7;
@@ -898,6 +891,7 @@
                         const leftMin = 0;
                         const leftMax = Math.max(maxCount * 1.2, 10);
 
+                        // 创建 canvas
                         const canvas = document.createElement('canvas');
                         canvas.width = 800;
                         canvas.height = 400;
@@ -992,12 +986,20 @@
                             }
                         });
 
+                        // 强制更新并多次等待
                         chart.update();
-                        await new Promise(resolve => setTimeout(resolve, 200));
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // 增加到1000ms
+
+                        // 再次更新以确保
+                        chart.update();
+                        await new Promise(resolve => setTimeout(resolve, 500));
 
                         const imgData = canvas.toDataURL('image/png');
+                        console.log('图像数据前50字符:', imgData.substring(0, 50));
+
                         doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
 
+                        // 在图表上方添加日期标签
                         doc.setFontSize(8);
                         doc.setTextColor(0, 0, 0);
                         doc.text(dateStr, xPos, yPos - 3);
@@ -1031,7 +1033,6 @@
             document.getElementById('getDetailBtn').addEventListener('click', fetchDetailSteps);
             document.getElementById('getAccBtn').addEventListener('click', fetchAcc);
             document.getElementById('mergeBtn').addEventListener('click', mergeData);
-            // 注意：reportBtn 已经通过 onclick 属性绑定，不再需要 addEventListener，以免触发两次
             document.getElementById('stopCollectBtn').addEventListener('click', stopCollect);
 
             // 初始化日期范围
@@ -1050,11 +1051,10 @@
                 document.getElementById('endDateInput').value = formatDate(endDate);
             })();
 
-            // 初始状态
             document.getElementById('disconnectBtn').disabled = true;
 
             console.log('脚本初始化完成');
-        }); // end DOMContentLoaded
+        });
     </script>
 </body>
 </html>
