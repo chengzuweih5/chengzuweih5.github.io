@@ -1,1102 +1,904 @@
-<html lang="zh-CN"><head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BraceSense - 健康数据监测</title>
-    <!-- Tailwind CSS v3 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome -->
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
-    <!-- Tailwind 配置 -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#3b82f6', // 蓝色系主色调
-                        secondary: '#10b981', // 绿色表示健康状态良好
-                        neutral: '#f3f4f6', // 背景色
-                        dark: '#1e293b', // 深色文本
-                        light: '#f8fafc' // 浅色背景
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                    animation: {
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    }
-                }
-            }
-        }
-    </script>
-    <style type="text/tailwindcss">
-        @layer utilities {
-            .text-shadow {
-                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .card-shadow {
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            }
-            .gradient-bg {
-                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            }
-            .health-gradient {
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            }
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BraceSense · 摆动方位活动量</title>
+    <!-- 引入 jsPDF 和 autoTable -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <style>
-        /* 自定义样式 */
-        .heart-rate-animation {
-            animation: heartbeat 1.5s ease-in-out infinite;
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; }
+        .ios-badge { background: #f2f2f7; border-radius: 30px; padding: 16px 20px; margin-bottom: 20px; border-left: 4px solid #007aff; font-size: 15px; }
+        .ios-badge ol { margin: 8px 0 0 20px; color: #3a3a3c; line-height: 1.6; }
+        .ios-badge code { background: #e5e5ea; padding: 2px 6px; border-radius: 6px; }
+        .ios-badge a { color: #007aff; text-decoration: none; }
+        h1 { font-size: 28px; margin-bottom: 8px; color: #1c1c1e; }
+        .sub { color: #6c6c70; margin-bottom: 24px; font-size: 16px; }
+        .flex-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 15px 0; }
+        button { background: #007aff; border: none; color: white; font-size: 16px; font-weight: 500; padding: 14px 20px; border-radius: 40px; cursor: pointer; flex: 1; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,122,255,0.2); }
+        button.secondary { background: #f2f2f7; color: #1c1c1e; box-shadow: none; border: 1px solid #d9d9e0; }
+        button:disabled { opacity: 0.5; pointer-events: none; }
+        .status-box { background: #f8f9fc; border-radius: 16px; padding: 16px; margin: 15px 0; border: 1px solid #e5e5ea; font-size: 15px; }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+        .data-card { background: #f8f9fc; border-radius: 18px; padding: 16px; text-align: center; }
+        .data-label { font-size: 14px; color: #6c6c70; margin-bottom: 6px; }
+        .data-value { font-size: 28px; font-weight: 700; color: #1c1c1e; }
+        .sub-value { font-size: 16px; color: #6c6c70; margin-top: 4px; }
+        .table-container { overflow-x: auto; margin-top: 25px; border-radius: 16px; border: 1px solid #e9ecf0; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 1000px; }
+        th { background: #f2f2f7; color: #1c1c1e; font-weight: 600; padding: 14px 8px; white-space: nowrap; }
+        td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #efeff4; }
+        tr:last-child td { border-bottom: none; }
+        .acc-neg { color: #ff3b30; }
+        .acc-pos { color: #34c759; }
+        footer { font-size: 13px; color: #8e8e93; margin-top: 20px; text-align: center; }
+        /* 日期范围与报告按钮放在同一行 */
+        .report-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            background: #f8f9fc;
+            padding: 15px;
+            border-radius: 20px;
+            margin: 20px 0 10px;
         }
-        
-        @keyframes heartbeat {
-            0% { transform: scale(1); }
-            14% { transform: scale(1.1); }
-            28% { transform: scale(1); }
-            42% { transform: scale(1.15); }
-            70% { transform: scale(1); }
+        .date-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        
-        .bluetooth-pulse {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        .date-item label {
+            font-size: 14px;
+            color: #6c6c70;
         }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .date-item input {
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #d9d9e0;
+            background: white;
+            font-size: 14px;
         }
-        
-        .chart-container {
-            position: relative;
-            height: 250px;
-            width: 100%;
+        .report-btn-container {
+            flex: 1;
+            min-width: 180px;
         }
-        
-        .tab-indicator {
-            transition: transform 0.3s ease;
+        /* 加载遮罩 */
+        #loadingOverlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            visibility: hidden;
         }
-        
-        .device-list-item {
-            transition: all 0.2s ease;
+        .loading-box {
+            background: white;
+            padding: 30px 40px;
+            border-radius: 24px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            max-width: 400px;
         }
-        
-        .device-list-item:active {
-            background-color: rgba(59, 130, 246, 0.1);
-        }
-        
-        /* 加载动画 */
-        .loading-spinner {
-            border: 3px solid rgba(59, 130, 246, 0.3);
+        .spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #007aff;
             border-radius: 50%;
-            border-top: 3px solid #3b82f6;
-            width: 24px;
-            height: 24px;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        /* 数据更新动画 */
-        .data-update {
-            animation: highlight 0.5s ease;
-        }
-        
-        @keyframes highlight {
-            0% { background-color: rgba(16, 185, 129, 0.2); }
-            100% { background-color: transparent; }
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .progress-text { margin: 10px 0; font-size: 14px; color: #1c1c1e; }
+        .stopBtn { background: #ff3b30; margin-top: 15px; border: none; color: white; padding: 8px 20px; border-radius: 40px; cursor: pointer; }
     </style>
 </head>
-<body class="bg-gray-50 font-sans">
-    <!-- 顶部导航栏 -->
-    <header class="bg-white shadow-sm sticky top-0 z-50">
-        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-            <div class="flex items-center">
-                <i class="fa fa-heartbeat text-primary text-2xl mr-2"></i>
-                <h1 class="text-xl font-bold text-dark">BraceSense</h1>
-            </div>
-            <div class="flex items-center space-x-4">
-                <button id="settingsBtn" class="text-gray-500 hover:text-primary transition-colors">
-                    <i class="fa fa-cog text-xl"></i>
-                </button>
-                <button id="helpBtn" class="text-gray-500 hover:text-primary transition-colors">
-                    <i class="fa fa-question-circle text-xl"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- 主内容区 -->
-    <main class="container mx-auto px-4 py-6">
-        <!-- 设备连接状态 -->
-        <section id="connectionStatus" class="mb-6">
-            <div class="bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                <div class="flex items-center">
-                    <div id="bluetoothIcon" class="w-10 h-10 rounded-full bg-primary bg-opacity-10 flex items-center justify-center mr-3">
-                        <i class="fa fa-bluetooth text-primary text-xl"></i>
-                    </div>
-                    <div>
-                        <h2 class="text-lg font-semibold text-dark">设备连接</h2>
-                        <p id="connectionStatusText" class="text-sm text-gray-500">未连接设备</p>
-                    </div>
-                </div>
-                <button id="connectBtn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors flex items-center">
-                    <i class="fa fa-search mr-2"></i>
-                    <span>扫描设备</span>
-                </button>
-            </div>
-        </section>
-
-
-        
-        <!-- 报告日期选择 -->
-        <section id="reportDateSelection" class="mb-6">
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-lg font-semibold text-dark mb-3">选择报告日期</h2>
-                <div class="flex flex-col md:flex-row gap-4">
-                    <div class="flex-1">
-                        <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
-                        <input type="date" id="startDate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <div class="flex-1">
-                        <label for="endDate" class="block text-sm font-medium text-gray-700 mb-1">结束日期</label>
-                        <input type="date" id="endDate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
-                    </div>
-                    <div class="flex items-end">
-                        <button id="generateReportBtn" class="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors">
-                            生成报告
-                        </button>
-                    </div>
-                </div>
-                <p class="text-xs text-gray-500 mt-2">注：报告期限限定为28天</p>
-            </div>
-        </section>
-
-
-        <!-- 分享报告 -->
-        <section id="shareReport" class="mb-6">
-            <div class="bg-white rounded-lg shadow p-4">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-semibold text-dark">分享报告</h2>
-                    <div class="flex space-x-2">
-                        <button id="downloadReportBtn" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors flex items-center text-sm">
-                            <i class="fa fa-download mr-1"></i>
-                            <span>下载</span>
-                        </button>
-                        <button id="shareReportBtn" class="px-3 py-1 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors flex items-center text-sm">
-                            <i class="fa fa-share-alt mr-1"></i>
-                            <span>分享</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
-                        <i class="fa fa-wechat text-green-500 mr-2"></i>
-                        <span>微信</span>
-                    </button>
-
-                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
-                        <i class="fa fa-envelope text-gray-500 mr-2"></i>
-                        <span>邮件</span>
-                    </button>
-                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
-                        <i class="fa fa-link text-gray-600 mr-2"></i>
-                        <span>复制链接</span>
-                    </button>
-                </div>
-            </div>
-        </section>
-    </main>
-
-
-
-    <!-- 设备扫描弹窗 -->
-    <div id="deviceScanModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-lg w-11/12 max-w-md max-h-[80vh] overflow-hidden flex flex-col">
-            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
-                <h3 class="text-lg font-semibold text-dark">扫描设备</h3>
-                <button id="closeScanModalBtn" class="text-gray-500 hover:text-gray-700">
-                    <i class="fa fa-times"></i>
-                </button>
-            </div>
-            <div class="p-4 flex-grow overflow-y-auto">
-                <div id="scanningIndicator" class="flex items-center justify-center py-6">
-                    <div class="loading-spinner mr-3"></div>
-                    <span class="text-gray-500">正在扫描附近的设备...</span>
-                </div>
-                <div id="deviceList" class="hidden">
-                    <h4 class="text-sm font-medium text-gray-500 mb-2">可用设备</h4>
-                    <div class="space-y-2" id="deviceListContent"></div>
-                </div>
-                <div id="noDevicesFound" class="hidden py-6 text-center">
-                    <i class="fa fa-bluetooth text-gray-300 text-4xl mb-3"></i>
-                    <p class="text-gray-500">未找到可用设备</p>
-                    <p class="text-sm text-gray-400 mt-1">请确保设备已开启并处于配对模式</p>
-                </div>
-            </div>
-            <div class="p-4 border-t border-gray-200 flex justify-end">
-                <button id="stopScanBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">
-                    停止扫描
-                </button>
-            </div>
+<body>
+    <!-- 加载遮罩（用于自动采集） -->
+    <div id="loadingOverlay">
+        <div class="loading-box">
+            <div class="spinner"></div>
+            <div id="loadingMessage">正在获取设备数据...</div>
+            <div class="progress-text" id="progressDetail">准备中</div>
+            <button id="stopCollectBtn" class="stopBtn">停止采集</button>
         </div>
     </div>
 
-    <!-- 连接状态提示 -->
-    <div id="connectionToast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-dark text-white px-4 py-2 rounded-md shadow-lg z-50 hidden">
-        <div class="flex items-center">
-            <i id="connectionToastIcon" class="fa fa-check-circle mr-2"></i>
-            <span id="connectionToastText">设备连接成功</span>
+    <div class="container">
+        <!-- iOS提示 -->
+        <div class="ios-badge">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 30px; font-size: 13px; font-weight: 500;">📱 iPhone用户必读</span>
+                <span style="color: #1c1c1e; font-weight: 500;">Safari不支持蓝牙连接</span>
+            </div>
+            <ol>
+                <li>在App Store搜索 <strong>“Bluefy”</strong> 并下载（免费）。<a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank">立即下载 →</a></li>
+                <li>打开Bluefy，输入本页网址：<code>https://您的域名.com/页面.html</code></li>
+                <li>首次使用允许蓝牙权限，即可正常连接。</li>
+            </ol>
+            <div style="margin-top: 10px; font-size: 14px; color: #6c6c70;">✅ 安卓/Windows直接用Chrome/Edge</div>
         </div>
+
+        <h1>BraceSense</h1>
+        <div class="sub">摆动.方位.活动量</div>
+
+        <!-- 日期范围与报告按钮合并为一行 -->
+        <div class="report-row">
+            <div class="date-item">
+                <label>起始：</label>
+                <input type="date" id="startDateInput">
+            </div>
+            <div class="date-item">
+                <label>结束：</label>
+                <input type="date" id="endDateInput">
+            </div>
+            <div class="report-btn-container">
+                <button id="reportBtn" class="secondary" style="width:100%;">📄 生成PDF报告</button>
+            </div>
+        </div>
+
+        <div class="flex-row">
+            <button id="scanBtn" class="secondary">🔍 扫描设备</button>
+            <button id="connectBtn" disabled>🔗 连接设备</button>
+            <button id="disconnectBtn" disabled class="secondary">⛔ 断开</button>
+        </div>
+
+        <div class="status-box" id="status">⚪ 未连接。点击「扫描设备」查找附近的 Stride1850 设备。</div>
+        <div id="deviceListContainer"></div>
+
+        <div id="dataSection" style="display: none;">
+            <div class="data-grid">
+                <div class="data-card">
+                    <div class="data-label">电量</div>
+                    <div class="data-value" id="batteryValue">--</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">设备编号</div>
+                    <div class="data-value" id="deviceIdValue">--</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">当前日期</div>
+                    <div class="data-value" id="dateValue">--</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">当前时间</div>
+                    <div class="data-value" id="timeValue">--</div>
+                </div>
+                <div class="data-card">
+                    <div class="data-label">当日总摆动数</div>
+                    <div class="data-value" id="totalStepsValue">--</div>
+                    <div class="sub-value">高强度(H): <span id="highStepsValue">--</span></div>
+                </div>
+            </div>
+
+            <div class="flex-row">
+                <button id="refreshBtn" class="secondary">🔄 刷新数据</button>
+                <button id="getDetailBtn" class="secondary">📋 获取步数详细 (52)</button>
+                <button id="getAccBtn" class="secondary">📊 获取ACC数据 (53/54)</button>
+                <button id="mergeBtn" class="secondary">📈 生成综合表格</button>
+            </div>
+
+            <!-- 综合表格（10分钟段） -->
+            <div id="tableContainer" class="table-container" style="display: none;">
+                <table id="detailTable">
+                    <thead>
+                        <tr>
+                            <th>10分钟段起点</th>
+                            <th>10分钟段终点</th>
+                            <th>总摆动数</th>
+                            <th>高强度</th>
+                            <th>X</th>
+                            <th>Y</th>
+                            <th>Z</th>
+                            <th>X总</th>
+                            <th>Y总</th>
+                            <th>Z总</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <footer>数据仅在本地处理，不上传云端</footer>
     </div>
 
     <script>
-        // 模拟数据 - 28天历史数据
-        const generate28DaysData = () => {
-            const data = [];
-            const today = new Date();
+        (function() {
+            // ---------- 协议常量 ----------
+            const SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
+            const TX_CHAR_UUID = '0000fff6-0000-1000-8000-00805f9b34fb';
+            const RX_CHAR_UUID = '0000fff7-0000-1000-8000-00805f9b34fb';
+
+            const CMD_REAL_TIME_STEP = 0x09;
+            const CMD_GET_BATTERY = 0x13;
+            const CMD_GET_HISTORY_TOTAL = 0x51;
+            const CMD_GET_DETAIL_STEPS = 0x52;
+            const CMD_GET_ACC_INSTANT = 0x53;
+            const CMD_GET_ACC_CUMULATIVE = 0x54;
+
+            // ---------- 全局变量 ----------
+            let bluetoothDevice = null;
+            let gattServer = null;
+            let txChar = null;
+            let rxChar = null;
+
+            let totalSteps = 0;
+            let highSteps = 0;
+            let batteryLevel = '--';
             
-            for (let i = 27; i >= 0; i--) {
-                const date = new Date(today);
-                date.setDate(date.getDate() - i);
-                
-                // 生成每日步数数据（3000-12000步之间的随机数）
-                const dailySteps = Math.floor(Math.random() * 9000) + 3000;
-                
-                // 生成每小时步数数据
-                const hourlySteps = [];
-                for (let h = 0; h < 24; h++) {
-                    // 白天活动量更大，晚上活动量小
-                    let hourFactor = 1;
-                    if (h >= 0 && h < 6) hourFactor = 0.1; // 凌晨
-                    else if (h >= 6 && h < 9) hourFactor = 0.8; // 早晨
-                    else if (h >= 9 && h < 12) hourFactor = 0.6; // 上午
-                    else if (h >= 12 && h < 14) hourFactor = 0.7; // 中午
-                    else if (h >= 14 && h < 18) hourFactor = 0.9; // 下午
-                    else if (h >= 18 && h < 22) hourFactor = 1.0; // 晚上
-                    else hourFactor = 0.3; // 深夜
-                    
-                    hourlySteps.push(Math.floor((dailySteps / 24) * hourFactor * (Math.random() * 0.6 + 0.7)));
-                }
-                
-                // 生成加速度计数据（X/Y/Z轴）
-                const accelerometerData = {
-                    x: [],
-                    y: [],
-                    z: []
+            let stepsDetails = [];
+            let accInstant = [];
+            let accCumulative = [];
+
+            let autoCollectActive = false;
+            let currentCommand = null;
+            let commandTimeout = null;
+            let recordCount = 0;
+            let stopRequested = false;
+            let isReportMode = false;
+
+            // UI 元素
+            const scanBtn = document.getElementById('scanBtn');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const getDetailBtn = document.getElementById('getDetailBtn');
+            const getAccBtn = document.getElementById('getAccBtn');
+            const mergeBtn = document.getElementById('mergeBtn');
+            const reportBtn = document.getElementById('reportBtn');
+            const statusDiv = document.getElementById('status');
+            const deviceListDiv = document.getElementById('deviceListContainer');
+            const dataSection = document.getElementById('dataSection');
+            const batterySpan = document.getElementById('batteryValue');
+            const deviceIdSpan = document.getElementById('deviceIdValue');
+            const dateSpan = document.getElementById('dateValue');
+            const timeSpan = document.getElementById('timeValue');
+            const totalStepsSpan = document.getElementById('totalStepsValue');
+            const highStepsSpan = document.getElementById('highStepsValue');
+            const tableContainer = document.getElementById('tableContainer');
+            const tableBody = document.getElementById('tableBody');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const progressDetail = document.getElementById('progressDetail');
+            const stopCollectBtn = document.getElementById('stopCollectBtn');
+            const startDateInput = document.getElementById('startDateInput');
+            const endDateInput = document.getElementById('endDateInput');
+
+            // 初始化日期范围（最近28天）
+            function initDateRange() {
+                const today = new Date();
+                const endDate = new Date(today);
+                const startDate = new Date(today);
+                startDate.setDate(today.getDate() - 28);
+                const formatDate = (d) => {
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
                 };
-                
-                // 每小时生成60个数据点（每分钟一个）
-                for (let h = 0; h < 24; h++) {
-                    for (let m = 0; m < 60; m++) {
-                        // 根据活动量调整加速度值
-                        const activityFactor = hourlySteps[h] / 100;
-                        
-                        // X轴加速度（左右方向）
-                        accelerometerData.x.push((Math.random() * 2 - 1) * activityFactor);
-                        
-                        // Y轴加速度（前后方向）
-                        accelerometerData.y.push((Math.random() * 2 - 1) * activityFactor * 1.2);
-                        
-                        // Z轴加速度（上下方向）
-                        accelerometerData.z.push((Math.random() * 2 - 0.5) * activityFactor * 0.8);
-                    }
-                }
-                
-                data.push({
-                    date: date.toISOString().split('T')[0],
-                    dailySteps,
-                    hourlySteps,
-                    accelerometerData
-                });
+                startDateInput.value = formatDate(startDate);
+                endDateInput.value = formatDate(endDate);
+                console.log('日期范围初始化:', startDateInput.value, endDateInput.value);
             }
-            
-            return data;
-        };
-        
-        // 生成28天的模拟数据
-        const mockData = {
-            history: generate28DaysData(),
-            
-            // 图表显示用的数据
-            steps: {
-                day: {
-                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
-                    values: [] // 将在选择日期时填充
-                },
-                week: {
-                    labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
-                    values: [] // 将在选择周时填充
-                },
-                month: {
-                    labels: ['第1周', '第2周', '第3周', '第4周'],
-                    values: [] // 将在初始化时填充
-                }
-            },
-            accelerometer: {
-                day: {
-                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
-                    x: [],
-                    y: [],
-                    z: []
-                }
-            }
-        };
-        
-        // 初始化月度数据（按周汇总）
-        for (let week = 0; week < 4; week++) {
-            let weekSteps = 0;
-            for (let day = 0; day < 7; day++) {
-                const index = week * 7 + day;
-                if (index < mockData.history.length) {
-                    weekSteps += mockData.history[index].dailySteps;
-                }
-            }
-            mockData.steps.month.values.push(weekSteps);
-        }
-
-        // AI健康建议
-        const aiInsights = [
-            "您的心率在正常范围内，继续保持良好的生活习惯。",
-            "建议增加每日步数至10,000步，有助于改善心血管健康。",
-            "您的睡眠质量良好，但睡眠时间略短，建议每晚保持7-8小时睡眠。",
-            "今日活动量充足，继续保持活跃的生活方式。",
-            "您的静息心率较低，表明心肺功能良好。"
-        ];
-
-        // 设备列表 - 只包含以"Stride"开头的设备
-        const mockDevices = [
-            { name: "Stride BraceSensor Pro", id: "device1", rssi: -65 },
-            { name: "Stride BraceSensor Mini", id: "device2", rssi: -72 },
-            { name: "Stride BraceSensor Lite", id: "device3", rssi: -80 }
-        ];
-
-        // DOM元素
-        const connectBtn = document.getElementById('connectBtn');
-        const connectionStatusText = document.getElementById('connectionStatusText');
-        const bluetoothIcon = document.getElementById('bluetoothIcon');
-        const deviceScanModal = document.getElementById('deviceScanModal');
-        const closeScanModalBtn = document.getElementById('closeScanModalBtn');
-        const scanningIndicator = document.getElementById('scanningIndicator');
-        const deviceList = document.getElementById('deviceList');
-        const deviceListContent = document.getElementById('deviceListContent');
-        const noDevicesFound = document.getElementById('noDevicesFound');
-        const stopScanBtn = document.getElementById('stopScanBtn');
-        const connectionToast = document.getElementById('connectionToast');
-        const connectionToastIcon = document.getElementById('connectionToastIcon');
-        const connectionToastText = document.getElementById('connectionToastText');
-        const totalStepsValue = document.getElementById('totalStepsValue');
-        const avgStepsPerDay = document.getElementById('avgStepsPerDay');
-        const activityLevel = document.getElementById('activityLevel');
-        const startDateInput = document.getElementById('startDate');
-        const endDateInput = document.getElementById('endDate');
-        const generateReportBtn = document.getElementById('generateReportBtn');
-        const timeRangeBtns = document.querySelectorAll('.time-range-btn');
-        const tabIndicator = document.querySelector('.tab-indicator');
-        const downloadReportBtn = document.getElementById('downloadReportBtn');
-        const shareReportBtn = document.getElementById('shareReportBtn');
-        const shareOptionBtns = document.querySelectorAll('.share-option-btn');
-
-        // 图表实例
-        let stepsChart, accelerometerChart;
-        let currentTimeRange = 'day';
-        let isConnected = false;
-        let scanInterval;
-        let selectedStartDate = null;
-        let selectedEndDate = null;
-
-        // 初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            initCharts();
-            setupEventListeners();
-            updateTabIndicator(0);
-        });
-
-        // 初始化图表
-        function initCharts() {
-            // 步数图表
-            const stepsCtx = document.getElementById('stepsChart').getContext('2d');
-            stepsChart = new Chart(stepsCtx, {
-                type: 'bar',
-                data: {
-                    labels: mockData.steps.day.labels,
-                    datasets: [{
-                        label: '步数',
-                        data: mockData.steps.day.values,
-                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
-                        borderRadius: 4,
-                        maxBarThickness: 30
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            titleColor: '#1e293b',
-                            bodyColor: '#1e293b',
-                            borderColor: '#e2e8f0',
-                            borderWidth: 1,
-                            padding: 10,
-                            displayColors: false,
-                            callbacks: {
-                                label: function(context) {
-                                    return `步数: ${context.parsed.y}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)'
-                            }
-                        }
-                    },
-                    animation: {
-                        duration: 1000,
-                        easing: 'easeOutQuart'
-                    }
-                }
-            });
-
-            // 加速度计图表
-            const accelerometerCtx = document.getElementById('accelerometerChart').getContext('2d');
-            accelerometerChart = new Chart(accelerometerCtx, {
-                type: 'line',
-                data: {
-                    labels: mockData.accelerometer.day.labels,
-                    datasets: [
-                        {
-                            label: 'X轴',
-                            data: mockData.accelerometer.day.x,
-                            borderColor: '#3b82f6',
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 0
-                        },
-                        {
-                            label: 'Y轴',
-                            data: mockData.accelerometer.day.y,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 0
-                        },
-                        {
-                            label: 'Z轴',
-                            data: mockData.accelerometer.day.z,
-                            borderColor: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            borderWidth: 2,
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                boxWidth: 6
-                            }
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            titleColor: '#1e293b',
-                            bodyColor: '#1e293b',
-                            borderColor: '#e2e8f0',
-                            borderWidth: 1,
-                            padding: 10
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
-                            grid: {
-                                color: 'rgba(0, 0, 0, 0.05)'
-                            },
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toFixed(1);
-                                }
-                            }
-                        }
-                    },
-                    interaction: {
-                        intersect: false,
-                        mode: 'index'
-                    },
-                    animation: {
-                        duration: 1000,
-                        easing: 'easeOutQuart'
-                    }
-                }
-            });
-        }
-
-        // 设置事件监听器
-        function setupEventListeners() {
-            // 连接按钮点击事件
-            connectBtn.addEventListener('click', () => {
-                openDeviceScanModal();
-                startDeviceScan();
-            });
-
-            // 关闭扫描弹窗按钮点击事件
-            closeScanModalBtn.addEventListener('click', closeDeviceScanModal);
-
-            // 停止扫描按钮点击事件
-            stopScanBtn.addEventListener('click', stopDeviceScan);
-
-            // 时间范围按钮点击事件
-            timeRangeBtns.forEach((btn, index) => {
-                btn.addEventListener('click', () => {
-                    const range = btn.dataset.range;
-                    currentTimeRange = range;
-                    updateCharts(range);
-                    updateTabIndicator(index);
-                });
-            });
-
-            // 日期选择器事件
-            startDateInput.addEventListener('change', updateDateRange);
-            endDateInput.addEventListener('change', updateDateRange);
-            
-            // 初始化日期范围
             initDateRange();
 
-            // 生成报告按钮点击事件
-            generateReportBtn.addEventListener('click', generateReport);
-
-            // 下载报告按钮点击事件
-            downloadReportBtn.addEventListener('click', downloadPDFReport);
-
-            // 分享报告按钮点击事件
-            shareReportBtn.addEventListener('click', shareReport);
-
-            // 分享选项按钮点击事件
-            shareOptionBtns.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const platform = btn.querySelector('span').textContent;
-                    shareReportToPlatform(platform);
-                });
-            });
-        }
-
-        // 初始化日期范围
-        function initDateRange() {
-            const today = new Date();
-            const defaultEndDate = today;
-            const defaultStartDate = new Date();
-            defaultStartDate.setDate(today.getDate() - 7); // 默认显示最近7天
-            
-            // 设置日期输入框的最大值为今天
-            const maxDate = today.toISOString().split('T')[0];
-            startDateInput.max = maxDate;
-            endDateInput.max = maxDate;
-            
-            // 设置默认日期范围
-            startDateInput.value = defaultStartDate.toISOString().split('T')[0];
-            endDateInput.value = defaultEndDate.toISOString().split('T')[0];
-            
-            selectedStartDate = defaultStartDate;
-            selectedEndDate = defaultEndDate;
-        }
-
-        // 更新日期范围
-        function updateDateRange() {
-            const startDate = new Date(startDateInput.value);
-            const endDate = new Date(endDateInput.value);
-            const today = new Date();
-            
-            // 验证日期范围
-            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                showToast('请选择有效的日期范围', 'error');
-                return;
+            // ---------- 辅助函数 ----------
+            function updateStatus(msg, isError = false) {
+                statusDiv.innerText = msg;
+                statusDiv.style.background = isError ? '#ffeeee' : '#ffffff';
             }
-            
-            // 检查开始日期是否早于结束日期
-            if (startDate > endDate) {
-                showToast('开始日期不能晚于结束日期', 'error');
-                return;
+
+            function showLoading(msg) {
+                loadingMessage.innerText = msg || '正在获取设备数据...';
+                loadingOverlay.style.visibility = 'visible';
             }
-            
-            // 检查日期范围是否超过28天
-            const diffTime = Math.abs(endDate - startDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays > 28) {
-                showToast('报告期限不能超过28天', 'error');
-                return;
+
+            function hideLoading() {
+                loadingOverlay.style.visibility = 'hidden';
             }
-            
-            selectedStartDate = startDate;
-            selectedEndDate = endDate;
-            
-            // 如果已连接设备，更新数据显示
-            if (isConnected) {
-                updateDataOverview();
-                updateCharts(currentTimeRange);
+
+            function updateProgress(detail) {
+                progressDetail.innerText = detail;
             }
-        }
 
-        // 打开设备扫描弹窗
-        function openDeviceScanModal() {
-            deviceScanModal.classList.remove('hidden');
-        }
-
-        // 关闭设备扫描弹窗
-        function closeDeviceScanModal() {
-            deviceScanModal.classList.add('hidden');
-            stopDeviceScan();
-        }
-
-        // 开始设备扫描
-        function startDeviceScan() {
-            scanningIndicator.classList.remove('hidden');
-            deviceList.classList.add('hidden');
-            noDevicesFound.classList.add('hidden');
-            deviceListContent.innerHTML = '';
-
-            // 模拟扫描过程
-            scanInterval = setTimeout(() => {
-                if (mockDevices.length > 0) {
-                    scanningIndicator.classList.add('hidden');
-                    deviceList.classList.remove('hidden');
-                    renderDeviceList();
-                } else {
-                    scanningIndicator.classList.add('hidden');
-                    noDevicesFound.classList.remove('hidden');
-                }
-            }, 2000);
-        }
-
-        // 停止设备扫描
-        function stopDeviceScan() {
-            clearTimeout(scanInterval);
-            scanningIndicator.classList.add('hidden');
-        }
-
-        // 渲染设备列表
-        function renderDeviceList() {
-            deviceListContent.innerHTML = '';
-            mockDevices.forEach(device => {
-                const deviceItem = document.createElement('div');
-                deviceItem.className = 'device-list-item p-3 border border-gray-200 rounded-md flex justify-between items-center cursor-pointer';
-                deviceItem.innerHTML = `
-                    <div class="flex items-center">
-                        <div class="w-8 h-8 rounded-full bg-primary bg-opacity-10 flex items-center justify-center mr-3">
-                            <i class="fa fa-bluetooth text-primary"></i>
-                        </div>
-                        <div>
-                            <h4 class="text-sm font-medium text-dark">${device.name}</h4>
-                            <p class="text-xs text-gray-500">信号强度: ${device.rssi} dBm</p>
-                        </div>
-                    </div>
-                    <button class="connect-device-btn px-3 py-1 bg-primary text-white text-xs rounded-md hover:bg-blue-600 transition-colors">
-                        连接
-                    </button>
-                `;
-                
-                // 连接按钮点击事件
-                deviceItem.querySelector('.connect-device-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    connectToDevice(device);
-                });
-                
-                deviceListContent.appendChild(deviceItem);
-            });
-        }
-
-        // 连接到设备
-        function connectToDevice(device) {
-            showToast(`正在连接到 ${device.name}...`, 'info');
-            
-            // 模拟连接过程
-            setTimeout(() => {
-                isConnected = true;
-                updateConnectionStatus(true, device.name);
-                closeDeviceScanModal();
-                showToast(`已连接到 ${device.name}`, 'success');
-                
-                // 模拟数据采集过程
-                showToast('正在采集历史数据...', 'info');
-                setTimeout(() => {
-                    showToast('数据采集完成', 'success');
-                    updateDataOverview();
-                    updateCharts(currentTimeRange);
-                }, 2000);
-            }, 1500);
-        }
-
-        // 更新连接状态
-        function updateConnectionStatus(connected, deviceName) {
-            if (connected) {
-                connectionStatusText.textContent = `已连接到 ${deviceName}`;
-                bluetoothIcon.classList.add('text-green-500');
-                bluetoothIcon.classList.add('bluetooth-pulse');
-                connectBtn.innerHTML = `
-                    <i class="fa fa-refresh mr-2"></i>
-                    <span>重新连接</span>
-                `;
-            } else {
-                connectionStatusText.textContent = '未连接设备';
-                bluetoothIcon.classList.remove('text-green-500');
-                bluetoothIcon.classList.remove('bluetooth-pulse');
-                connectBtn.innerHTML = `
-                    <i class="fa fa-search mr-2"></i>
-                    <span>扫描设备</span>
-                `;
+            function calcCRC(bytes) {
+                let sum = 0;
+                for (let i = 0; i < 15; i++) sum += bytes[i];
+                return sum & 0xFF;
             }
-        }
 
-        // 更新数据概览
-        function updateDataOverview() {
-            if (!selectedStartDate || !selectedEndDate) return;
-            
-            // 筛选选定日期范围内的数据
-            const filteredData = filterDataByDateRange(mockData.history, selectedStartDate, selectedEndDate);
-            
-            // 计算总步数
-            const totalSteps = filteredData.reduce((sum, day) => sum + day.dailySteps, 0);
-            totalStepsValue.textContent = totalSteps.toLocaleString();
-            totalStepsValue.classList.add('data-update');
-            
-            // 计算平均每日步数
-            const avgSteps = Math.round(totalSteps / filteredData.length);
-            avgStepsPerDay.textContent = avgSteps.toLocaleString();
-            avgStepsPerDay.classList.add('data-update');
-            
-            // 计算活动强度
-            const activityLevelValue = calculateActivityLevel(filteredData);
-            activityLevel.textContent = activityLevelValue;
-            activityLevel.classList.add('data-update');
-            
-            // 移除动画类
-            setTimeout(() => {
-                totalStepsValue.classList.remove('data-update');
-                avgStepsPerDay.classList.remove('data-update');
-                activityLevel.classList.remove('data-update');
-            }, 500);
-        }
-        
-        // 根据日期范围筛选数据
-        function filterDataByDateRange(data, startDate, endDate) {
-            const start = new Date(startDate);
-            start.setHours(0, 0, 0, 0);
-            
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
-            
-            return data.filter(item => {
-                const itemDate = new Date(item.date);
-                return itemDate >= start && itemDate <= end;
-            });
-        }
-        
-        // 计算活动强度
-        function calculateActivityLevel(data) {
-            // 计算所有加速度数据的平均值和标准差
-            let totalAcceleration = 0;
-            let count = 0;
-            
-            data.forEach(day => {
-                const { x, y, z } = day.accelerometerData;
-                for (let i = 0; i < x.length; i++) {
-                    // 计算每个时间点的总加速度
-                    const total = Math.sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
-                    totalAcceleration += total;
-                    count++;
-                }
-            });
-            
-            const avgAcceleration = totalAcceleration / count;
-            
-            // 根据平均加速度确定活动强度
-            if (avgAcceleration < 0.5) return '低';
-            if (avgAcceleration < 1.5) return '中';
-            return '高';
-        }
-        
-        // 生成报告
-        function generateReport() {
-            if (!isConnected) {
-                showToast('请先连接设备', 'error');
-                return;
+            function buildCommand(cmd, params = []) {
+                const buffer = new ArrayBuffer(16);
+                const view = new Uint8Array(buffer);
+                view[0] = cmd;
+                for (let i = 0; i < params.length && i < 14; i++) view[1 + i] = params[i];
+                for (let i = 1 + params.length; i < 15; i++) view[i] = 0;
+                view[15] = calcCRC(view);
+                return buffer;
             }
-            
-            if (!selectedStartDate || !selectedEndDate) {
-                showToast('请选择报告日期范围', 'error');
-                return;
-            }
-            
-            showToast('正在生成报告...', 'info');
-            
-            // 模拟报告生成过程
-            setTimeout(() => {
-                showToast('报告生成成功', 'success');
-                // 更新数据概览和图表
-                updateDataOverview();
-                updateCharts(currentTimeRange);
-            }, 2000);
-        }
-        
-        // 下载PDF报告
-        function downloadPDFReport() {
-            if (!isConnected) {
-                showToast('请先连接设备并生成报告', 'error');
-                return;
-            }
-            
-            showToast('正在生成PDF报告...', 'info');
-            
-            // 模拟PDF生成和下载过程
-            setTimeout(() => {
-                showToast('PDF报告已生成，正在下载...', 'info');
-                setTimeout(() => {
-                    showToast('PDF报告下载成功', 'success');
-                }, 1500);
-            }, 2000);
-        }
-        
-        // 分享报告
-        function shareReport() {
-            if (!isConnected) {
-                showToast('请先连接设备并生成报告', 'error');
-                return;
-            }
-            
-            showToast('正在生成分享链接...', 'info');
-            
-            // 模拟分享链接生成过程
-            setTimeout(() => {
-                showToast('分享链接已复制到剪贴板', 'success');
-            }, 1500);
-        }
-        
-        // 分享报告到特定平台
-        function shareReportToPlatform(platform) {
-            if (!isConnected) {
-                showToast('请先连接设备并生成报告', 'error');
-                return;
-            }
-            
-            showToast(`正在分享到${platform}...`, 'info');
-            
-            // 模拟分享过程
-            setTimeout(() => {
-                showToast(`已分享到${platform}`, 'success');
-            }, 1500);
-        }
 
-        // 更新图表
-        function updateCharts(range) {
-            if (!selectedStartDate || !selectedEndDate) return;
-            
-            // 筛选选定日期范围内的数据
-            const filteredData = filterDataByDateRange(mockData.history, selectedStartDate, selectedEndDate);
-            
-            if (range === 'day') {
-                // 日视图 - 显示选中日期的每小时数据
-                if (filteredData.length > 0) {
-                    // 如果选择了多个日期，显示第一个日期的数据
-                    const dayData = filteredData[0];
+            async function sendCommand(cmd, params = []) {
+                if (!txChar) throw new Error('TX特征不可用');
+                const buffer = buildCommand(cmd, params);
+                await txChar.writeValue(buffer);
+                console.log(`命令已发送: 0x${cmd.toString(16)}`, params);
+            }
+
+            // ---------- 解析函数 ----------
+            function parseUint32LE(bytes, start) {
+                return bytes[start] | (bytes[start+1] << 8) | (bytes[start+2] << 16) | (bytes[start+3] << 24);
+            }
+            function parseInt16LE(bytes, start) {
+                let val = bytes[start] | (bytes[start+1] << 8);
+                if (val >= 0x8000) val -= 0x10000;
+                return val;
+            }
+            function parseInt32LE(bytes, start) {
+                let val = parseUint32LE(bytes, start);
+                if (val >= 0x80000000) val -= 0x100000000;
+                return val;
+            }
+            function bcdToDec(b) {
+                return ((b >> 4) * 10) + (b & 0x0F);
+            }
+            function bcdToDate(y, m, d, h, min, s) {
+                return new Date(2000 + bcdToDec(y), bcdToDec(m)-1, bcdToDec(d), bcdToDec(h), bcdToDec(min), bcdToDec(s));
+            }
+
+            function updateStepDisplay() {
+                totalStepsSpan.innerText = Math.floor(totalSteps / 2);
+                highStepsSpan.innerText = Math.floor(highSteps / 2);
+            }
+
+            // 处理接收数据
+            function handleRxData(event) {
+                const value = event.target.value;
+                if (!value) return;
+
+                const fullBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+                console.log('原始数据包:', Array.from(fullBytes).map(b => b.toString(16).padStart(2,'0')).join(' '));
+
+                let offset = 0;
+                while (offset < fullBytes.length) {
+                    const cmd = fullBytes[offset] & 0x7F;
                     
-                    // 更新步数图表
-                    stepsChart.data.labels = mockData.steps.day.labels;
-                    stepsChart.data.datasets[0].data = dayData.hourlySteps;
-                    stepsChart.update();
-                    
-                    // 更新加速度计图表 - 每小时取平均值
-                    const hourlyAccelData = {
-                        x: [],
-                        y: [],
-                        z: []
-                    };
-                    
-                    // 每小时60个数据点，计算每小时的平均值
-                    for (let h = 0; h < 24; h++) {
-                        let hourX = 0, hourY = 0, hourZ = 0;
-                        const startIdx = h * 60;
-                        const endIdx = startIdx + 60;
-                        
-                        for (let i = startIdx; i < endIdx && i < dayData.accelerometerData.x.length; i++) {
-                            hourX += dayData.accelerometerData.x[i];
-                            hourY += dayData.accelerometerData.y[i];
-                            hourZ += dayData.accelerometerData.z[i];
+                    // 检查是否为结束包（命令后紧跟0xFF）
+                    if (offset + 1 < fullBytes.length && fullBytes[offset+1] === 0xFF) {
+                        console.log(`命令 ${cmd.toString(16)} 结束包`);
+                        if (autoCollectActive && cmd === currentCommand) {
+                            finishCurrentCommand(isReportMode);
                         }
-                        
-                        hourlyAccelData.x.push(hourX / 60);
-                        hourlyAccelData.y.push(hourY / 60);
-                        hourlyAccelData.z.push(hourZ / 60);
+                        offset += 2;
+                        continue;
                     }
-                    
-                    accelerometerChart.data.labels = mockData.accelerometer.day.labels;
-                    accelerometerChart.data.datasets[0].data = hourlyAccelData.x;
-                    accelerometerChart.data.datasets[1].data = hourlyAccelData.y;
-                    accelerometerChart.data.datasets[2].data = hourlyAccelData.z;
-                    accelerometerChart.update();
-                }
-            } else if (range === 'week') {
-                // 周视图 - 显示每天的总步数
-                const dailySteps = filteredData.map(day => day.dailySteps);
-                const dayLabels = filteredData.map(day => {
-                    const date = new Date(day.date);
-                    return `${date.getMonth() + 1}/${date.getDate()}`;
-                });
-                
-                stepsChart.data.labels = dayLabels;
-                stepsChart.data.datasets[0].data = dailySteps;
-                stepsChart.update();
-                
-                // 加速度计数据 - 显示每天的平均加速度
-                const dailyAvgAccel = filteredData.map(day => {
-                    const { x, y, z } = day.accelerometerData;
-                    let total = 0;
-                    
-                    for (let i = 0; i < x.length; i++) {
-                        total += Math.sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
-                    }
-                    
-                    return total / x.length;
-                });
-                
-                accelerometerChart.data.labels = dayLabels;
-                accelerometerChart.data.datasets[0].data = dailyAvgAccel;
-                accelerometerChart.data.datasets[1].data = Array(dayLabels.length).fill(null); // 隐藏Y轴
-                accelerometerChart.data.datasets[2].data = Array(dayLabels.length).fill(null); // 隐藏Z轴
-                accelerometerChart.update();
-            } else if (range === 'month') {
-                // 月视图 - 按周汇总数据
-                const weeks = [];
-                const weekLabels = [];
-                
-                // 将数据按周分组
-                for (let i = 0; i < filteredData.length; i += 7) {
-                    const weekData = filteredData.slice(i, i + 7);
-                    if (weekData.length > 0) {
-                        const weekSteps = weekData.reduce((sum, day) => sum + day.dailySteps, 0);
-                        weeks.push(weekSteps);
-                        
-                        const firstDay = new Date(weekData[0].date);
-                        const lastDay = new Date(weekData[weekData.length - 1].date);
-                        weekLabels.push(`${firstDay.getMonth() + 1}/${firstDay.getDate()}-${lastDay.getMonth() + 1}/${lastDay.getDate()}`);
+
+                    if (cmd === CMD_GET_DETAIL_STEPS) {
+                        if (offset + 27 > fullBytes.length) break;
+                        const rec = fullBytes.slice(offset, offset + 27);
+                        parse52(rec);
+                        offset += 27;
+                        if (autoCollectActive && cmd === currentCommand) {
+                            recordCount++;
+                            updateProgress(`${getCommandName(cmd)}: 已接收 ${recordCount} 条`);
+                            resetCommandTimeout(isReportMode);
+                        }
+                    } else if (cmd === CMD_GET_ACC_INSTANT) {
+                        if (offset + 15 > fullBytes.length) break;
+                        const rec = fullBytes.slice(offset, offset + 15);
+                        parse53(rec);
+                        offset += 15;
+                        if (autoCollectActive && cmd === currentCommand) {
+                            recordCount++;
+                            updateProgress(`${getCommandName(cmd)}: 已接收 ${recordCount} 条`);
+                            resetCommandTimeout(isReportMode);
+                        }
+                    } else if (cmd === CMD_GET_ACC_CUMULATIVE) {
+                        if (offset + 21 > fullBytes.length) break;
+                        const rec = fullBytes.slice(offset, offset + 21);
+                        parse54(rec);
+                        offset += 21;
+                        if (autoCollectActive && cmd === currentCommand) {
+                            recordCount++;
+                            updateProgress(`${getCommandName(cmd)}: 已接收 ${recordCount} 条`);
+                            resetCommandTimeout(isReportMode);
+                        }
+                    } else if (cmd === CMD_GET_BATTERY) {
+                        if (offset + 16 > fullBytes.length) break;
+                        const rec = fullBytes.slice(offset, offset + 16);
+                        parse13(rec);
+                        offset += 16;
+                    } else if (cmd === CMD_GET_HISTORY_TOTAL) {
+                        if (offset + 26 > fullBytes.length) break;
+                        const rec = fullBytes.slice(offset, offset + 26);
+                        parse51(rec);
+                        offset += 26;
+                    } else {
+                        offset++;
                     }
                 }
+            }
+
+            function getCommandName(cmd) {
+                if (cmd === 0x52) return '步数详细';
+                if (cmd === 0x53) return '瞬时加速度';
+                if (cmd === 0x54) return '累积加速度';
+                return '未知';
+            }
+
+            function parse13(bytes) {
+                if ((bytes[0] & 0x7F) !== 0x13) return;
+                const level = bytes[1];
+                if (level === 0) batteryLevel = '低电';
+                else if (level === 1) batteryLevel = '正常';
+                else if (level === 2) batteryLevel = '满电';
+                else batteryLevel = `未知(${level})`;
+                batterySpan.innerText = batteryLevel;
+            }
+
+            function parse51(bytes) {
+                if ((bytes[0] & 0x7F) !== 0x51) return;
+                const id = bytes[1];
+                if (id === 0) {
+                    totalSteps = parseUint32LE(bytes, 5);
+                    highSteps = parseUint32LE(bytes, 22);
+                    updateStepDisplay();
+                }
+            }
+
+            function parse52(bytes) {
+                if ((bytes[0] & 0x7F) !== 0x52) return;
+                const year = bytes[3];
+                const month = bytes[4];
+                const day = bytes[5];
+                const hour = bytes[6];
+                const minute = bytes[7];
+                const second = bytes[8];
+                const startTime = bcdToDate(year, month, day, hour, minute, second);
+                const total = (bytes[9] | (bytes[10] << 8));
+                const high = (bytes[11] | (bytes[12] << 8));
+                stepsDetails.push({ startTime, totalSteps: total, highSteps: high });
+                console.log('解析到步数数据，日期：', startTime.toLocaleDateString('en-CA'), '时间：', startTime.toLocaleTimeString());
+            }
+
+            function parse53(bytes) {
+                if ((bytes[0] & 0x7F) !== 0x53) return;
+                const year = bytes[3];
+                const month = bytes[4];
+                const day = bytes[5];
+                const hour = bytes[6];
+                const minute = bytes[7];
+                const second = bytes[8];
+                const time = bcdToDate(year, month, day, hour, minute, second);
+                const x = parseInt16LE(bytes, 9);
+                const y = parseInt16LE(bytes, 11);
+                const z = parseInt16LE(bytes, 13);
+                accInstant.push({ time, x, y, z });
+            }
+
+            function parse54(bytes) {
+                if ((bytes[0] & 0x7F) !== 0x54) return;
+                const year = bytes[3];
+                const month = bytes[4];
+                const day = bytes[5];
+                const hour = bytes[6];
+                const minute = bytes[7];
+                const second = bytes[8];
+                const time = bcdToDate(year, month, day, hour, minute, second);
+                const x = parseInt32LE(bytes, 9);
+                const y = parseInt32LE(bytes, 13);
+                const z = parseInt32LE(bytes, 17);
+                accCumulative.push({ time, x, y, z });
+            }
+
+            // ---------- 自动采集流程（支持报告模式）----------
+            function resetCommandTimeout(reportMode) {
+                if (commandTimeout) clearTimeout(commandTimeout);
+                commandTimeout = setTimeout(() => {
+                    console.log(`命令 ${currentCommand} 超时，自动结束`);
+                    finishCurrentCommand(reportMode);
+                }, 15000);
+            }
+
+            function startCommand(cmd, reportMode) {
+                if (stopRequested) {
+                    finishAutoCollect(reportMode);
+                    return;
+                }
+                currentCommand = cmd;
+                recordCount = 0;
+                updateProgress(`${getCommandName(cmd)}: 等待数据...`);
+                sendCommand(cmd, [0x00]);
+                resetCommandTimeout(reportMode);
+            }
+
+            function finishCurrentCommand(reportMode) {
+                if (commandTimeout) clearTimeout(commandTimeout);
+                commandTimeout = null;
+                if (!autoCollectActive) return;
+                console.log(`完成命令: ${currentCommand}`);
+                if (currentCommand === CMD_GET_DETAIL_STEPS) {
+                    startCommand(CMD_GET_ACC_INSTANT, reportMode);
+                } else if (currentCommand === CMD_GET_ACC_INSTANT) {
+                    startCommand(CMD_GET_ACC_CUMULATIVE, reportMode);
+                } else if (currentCommand === CMD_GET_ACC_CUMULATIVE) {
+                    finishAutoCollect(reportMode);
+                }
+            }
+
+            function finishAutoCollect(reportMode) {
+                if (commandTimeout) clearTimeout(commandTimeout);
+                commandTimeout = null;
+                autoCollectActive = false;
+                currentCommand = null;
+                hideLoading();
                 
-                stepsChart.data.labels = weekLabels;
-                stepsChart.data.datasets[0].data = weeks;
-                stepsChart.update();
-                
-                // 加速度计数据 - 显示每周的平均加速度
-                const weeklyAvgAccel = [];
-                
-                for (let i = 0; i < filteredData.length; i += 7) {
-                    const weekData = filteredData.slice(i, i + 7);
-                    if (weekData.length > 0) {
-                        let totalAccel = 0;
-                        let count = 0;
-                        
-                        weekData.forEach(day => {
-                            const { x, y, z } = day.accelerometerData;
-                            for (let j = 0; j < x.length; j++) {
-                                totalAccel += Math.sqrt(x[j] * x[j] + y[j] * y[j] + z[j] * z[j]);
-                                count++;
+                if (reportMode) {
+                    // 报告模式：采集完成后立即生成报告
+                    generateDateRangeReport(true);
+                } else {
+                    updateStatus('数据获取完成');
+                }
+            }
+
+            function stopCollect() {
+                if (autoCollectActive) {
+                    stopRequested = true;
+                    finishAutoCollect(isReportMode);
+                }
+            }
+
+            // 启动自动采集（供报告模式或手动调用）
+            async function startAutoCollect(reportMode = false) {
+                stepsDetails = [];
+                accInstant = [];
+                accCumulative = [];
+                stopRequested = false;
+                autoCollectActive = true;
+                isReportMode = reportMode;
+
+                showLoading('正在获取步数详细数据...');
+                startCommand(CMD_GET_DETAIL_STEPS, reportMode);
+            }
+
+            // ---------- 综合表格（10分钟段）----------
+            function mergeData() {
+                stepsDetails.sort((a,b) => a.startTime - b.startTime);
+                accInstant.sort((a,b) => a.time - b.time);
+                accCumulative.sort((a,b) => a.time - b.time);
+
+                const merged = stepsDetails.map(step => {
+                    const start = step.startTime;
+                    const end = new Date(start.getTime() + 10*60*1000 - 1000);
+                    const mid = new Date(start.getTime() + 5*60*1000);
+                    let closestInstant = null;
+                    let minDiff = Infinity;
+                    for (let a of accInstant) {
+                        if (a.time >= start && a.time <= end) {
+                            const diff = Math.abs(a.time - mid);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestInstant = a;
                             }
-                        });
-                        
-                        weeklyAvgAccel.push(totalAccel / count);
+                        }
                     }
+                    let closestCum = null;
+                    minDiff = Infinity;
+                    for (let a of accCumulative) {
+                        if (a.time >= start && a.time <= end) {
+                            const diff = Math.abs(a.time - end);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestCum = a;
+                            }
+                        }
+                    }
+                    return {
+                        start: formatDateTime(start),
+                        end: formatDateTime(end),
+                        totalSteps: Math.floor(step.totalSteps / 2),
+                        highSteps: Math.floor(step.highSteps / 2),
+                        x: closestInstant ? closestInstant.x : '--',
+                        y: closestInstant ? closestInstant.y : '--',
+                        z: closestInstant ? closestInstant.z : '--',
+                        xCum: closestCum ? closestCum.x : '--',
+                        yCum: closestCum ? closestCum.y : '--',
+                        zCum: closestCum ? closestCum.z : '--'
+                    };
+                });
+                renderTable(merged);
+                tableContainer.style.display = 'block';
+            }
+
+            function formatDateTime(d) {
+                if (!d) return '';
+                const y = d.getFullYear();
+                const m = String(d.getMonth()+1).padStart(2,'0');
+                const d2 = String(d.getDate()).padStart(2,'0');
+                const h = String(d.getHours()).padStart(2,'0');
+                const min = String(d.getMinutes()).padStart(2,'0');
+                const s = String(d.getSeconds()).padStart(2,'0');
+                return `${y}-${m}-${d2} ${h}:${min}:${s}`;
+            }
+
+            function renderTable(data) {
+                tableBody.innerHTML = '';
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${row.start}</td>
+                        <td>${row.end}</td>
+                        <td>${row.totalSteps}</td>
+                        <td>${row.highSteps}</td>
+                        <td class="${row.x !== '--' && row.x < 0 ? 'acc-neg' : 'acc-pos'}">${row.x}</td>
+                        <td class="${row.y !== '--' && row.y < 0 ? 'acc-neg' : 'acc-pos'}">${row.y}</td>
+                        <td class="${row.z !== '--' && row.z < 0 ? 'acc-neg' : 'acc-pos'}">${row.z}</td>
+                        <td class="${row.xCum !== '--' && row.xCum < 0 ? 'acc-neg' : 'acc-pos'}">${row.xCum}</td>
+                        <td class="${row.yCum !== '--' && row.yCum < 0 ? 'acc-neg' : 'acc-pos'}">${row.yCum}</td>
+                        <td class="${row.zCum !== '--' && row.zCum < 0 ? 'acc-neg' : 'acc-pos'}">${row.zCum}</td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+            }
+
+            // ---------- 辅助：将日期向下取整到最近的10分钟 ----------
+            function floorTo10Minutes(date) {
+                const d = new Date(date);
+                const minutes = d.getMinutes();
+                const remainder = minutes % 10;
+                d.setMinutes(minutes - remainder);
+                d.setSeconds(0);
+                d.setMilliseconds(0);
+                return d;
+            }
+
+            // ---------- 生成10分钟段数据清单PDF ----------
+            function generateDateRangeReport(fromAuto = false) {
+                // 如果没有数据且不是自动采集模式，则启动自动采集
+                if (!fromAuto && stepsDetails.length === 0) {
+                    startAutoCollect(true);
+                    return;
                 }
-                
-                accelerometerChart.data.labels = weekLabels;
-                accelerometerChart.data.datasets[0].data = weeklyAvgAccel;
-                accelerometerChart.data.datasets[1].data = Array(weekLabels.length).fill(null); // 隐藏Y轴
-                accelerometerChart.data.datasets[2].data = Array(weekLabels.length).fill(null); // 隐藏Z轴
-                accelerometerChart.update();
+
+                const startDateStr = startDateInput.value;
+                const endDateStr = endDateInput.value;
+                if (!startDateStr || !endDateStr) {
+                    alert('请选择起始和结束日期');
+                    return;
+                }
+
+                // 构造本地时间的起止
+                const startDateTime = new Date(startDateStr + 'T00:00:00');
+                const endDateTime = new Date(endDateStr + 'T23:59:59.999');
+
+                console.log('报告日期范围:', startDateTime.toString(), '至', endDateTime.toString());
+                console.log('步数总记录数:', stepsDetails.length);
+
+                // 生成所有10分钟时间段
+                const slots = [];
+                let current = new Date(startDateTime);
+                while (current <= endDateTime) {
+                    const slotStart = new Date(current);
+                    const slotEnd = new Date(current.getTime() + 10 * 60 * 1000 - 1); // 减1毫秒得到59分59秒999
+                    slots.push({
+                        start: slotStart,
+                        end: slotEnd
+                    });
+                    current = new Date(current.getTime() + 10 * 60 * 1000);
+                }
+                console.log('生成时间段数量:', slots.length);
+
+                // 为快速查找，将步数数据按10分钟段起点建立映射
+                const stepsMap = new Map();
+                stepsDetails.forEach(step => {
+                    const key = floorTo10Minutes(step.startTime).getTime();
+                    if (!stepsMap.has(key)) {
+                        stepsMap.set(key, step);
+                    } else {
+                        console.warn('重复的10分钟段步数数据:', step.startTime);
+                    }
+                });
+
+                // 加速度数据排序（便于查找）
+                accInstant.sort((a, b) => a.time - b.time);
+                accCumulative.sort((a, b) => a.time - b.time);
+
+                // 构建表格行数据
+                const rows = [];
+                slots.forEach(slot => {
+                    const slotStart = slot.start;
+                    const slotEnd = slot.end;
+                    const slotKey = floorTo10Minutes(slotStart).getTime();
+
+                    // 步数数据
+                    const step = stepsMap.get(slotKey);
+                    const totalSwings = step ? Math.floor(step.totalSteps / 2) : '--';
+                    const highIntensity = step ? Math.floor(step.highSteps / 2) : '--';
+
+                    // 瞬时加速度（取最靠近中间时刻）
+                    const midTime = new Date(slotStart.getTime() + 5 * 60 * 1000);
+                    let closestInstant = null;
+                    let minDiff = Infinity;
+                    for (let a of accInstant) {
+                        if (a.time >= slotStart && a.time <= slotEnd) {
+                            const diff = Math.abs(a.time - midTime);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestInstant = a;
+                            }
+                        }
+                    }
+                    const avgX = closestInstant ? closestInstant.x : '--';
+                    const avgY = closestInstant ? closestInstant.y : '--';
+                    const avgZ = closestInstant ? closestInstant.z : '--';
+
+                    // 累积加速度（取最靠近结束时刻）
+                    let closestCum = null;
+                    minDiff = Infinity;
+                    for (let a of accCumulative) {
+                        if (a.time >= slotStart && a.time <= slotEnd) {
+                            const diff = Math.abs(a.time - slotEnd);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestCum = a;
+                            }
+                        }
+                    }
+                    const lastCumX = closestCum ? closestCum.x : '--';
+                    const lastCumY = closestCum ? closestCum.y : '--';
+                    const lastCumZ = closestCum ? closestCum.z : '--';
+
+                    rows.push([
+                        formatDateTime(slotStart),
+                        formatDateTime(slotEnd),
+                        totalSwings,
+                        highIntensity,
+                        avgX,
+                        avgY,
+                        avgZ,
+                        lastCumX,
+                        lastCumY,
+                        lastCumZ
+                    ]);
+                });
+
+                // 生成PDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'landscape' });
+                doc.setFontSize(16);
+                doc.text('BraceSense 10-Minute Data Report', 14, 20);
+                doc.setFontSize(10);
+                doc.text(`Date Range: ${startDateStr} to ${endDateStr}`, 14, 30);
+                doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 38);
+
+                doc.autoTable({
+                    startY: 45,
+                    head: [['Start', 'End', 'Total Swings', 'High Int.', 'X', 'Y', 'Z', 'Cum X', 'Cum Y', 'Cum Z']],
+                    body: rows,
+                    theme: 'striped',
+                    headStyles: { fillColor: [0, 122, 255] },
+                    columnStyles: {
+                        0: { cellWidth: 40 },
+                        1: { cellWidth: 40 },
+                        2: { cellWidth: 25 },
+                        3: { cellWidth: 25 },
+                        4: { cellWidth: 20 },
+                        5: { cellWidth: 20 },
+                        6: { cellWidth: 20 },
+                        7: { cellWidth: 25 },
+                        8: { cellWidth: 25 },
+                        9: { cellWidth: 25 }
+                    }
+                });
+
+                doc.save(`BraceSense_10min_${startDateStr}_${endDateStr}.pdf`);
             }
-        }
 
-        // 更新选项卡指示器
-        function updateTabIndicator(index) {
-            const btnWidth = timeRangeBtns[index].offsetWidth;
-            const btnLeft = timeRangeBtns[index].offsetLeft;
-            tabIndicator.style.width = `${btnWidth}px`;
-            tabIndicator.style.transform = `translateX(${btnLeft}px)`;
-            
-            // 更新按钮样式
-            timeRangeBtns.forEach(btn => {
-                btn.classList.remove('text-primary');
-                btn.classList.add('text-gray-600');
-            });
-            timeRangeBtns[index].classList.remove('text-gray-600');
-            timeRangeBtns[index].classList.add('text-primary');
-        }
-
-        // 显示提示信息
-        function showToast(message, type = 'info') {
-            connectionToastText.textContent = message;
-            
-            if (type === 'success') {
-                connectionToastIcon.className = 'fa fa-check-circle mr-2 text-green-500';
-                connectionToast.classList.add('bg-green-50');
-                connectionToast.classList.remove('bg-blue-50', 'bg-red-50');
-            } else if (type === 'error') {
-                connectionToastIcon.className = 'fa fa-exclamation-circle mr-2 text-red-500';
-                connectionToast.classList.add('bg-red-50');
-                connectionToast.classList.remove('bg-blue-50', 'bg-green-50');
-            } else {
-                connectionToastIcon.className = 'fa fa-info-circle mr-2 text-blue-500';
-                connectionToast.classList.add('bg-blue-50');
-                connectionToast.classList.remove('bg-green-50', 'bg-red-50');
+            // 更新本地时间
+            function updateLocalTime() {
+                const now = new Date();
+                dateSpan.innerText = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+                timeSpan.innerText = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
             }
-            
-            connectionToast.classList.remove('hidden');
-            
-            clearTimeout(window.toastTimeout);
-            window.toastTimeout = setTimeout(() => {
-                connectionToast.classList.add('hidden');
-            }, 3000);
-        }
+            setInterval(updateLocalTime, 1000);
+            updateLocalTime();
 
-        // 格式化时间
-        function formatTime(date) {
-            const hours = date.getHours().toString().padStart(2, '0');
-            const minutes = date.getMinutes().toString().padStart(2, '0');
-            return `${hours}:${minutes}`;
-        }
+            // ---------- 蓝牙操作 ----------
+            async function scanDevices() {
+                if (!navigator.bluetooth) {
+                    alert('浏览器不支持Web Bluetooth，请使用Chrome或Bluefy');
+                    return;
+                }
+                try {
+                    const device = await navigator.bluetooth.requestDevice({
+                        filters: [{ namePrefix: "Stride1850" }],
+                        optionalServices: [SERVICE_UUID]
+                    });
+                    bluetoothDevice = device;
+                    deviceIdSpan.innerText = device.name;
+                    updateStatus(`已选择: ${device.name}`);
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = false;
+                } catch (e) {
+                    updateStatus('扫描取消或失败', true);
+                }
+            }
+
+            async function connectToDevice() {
+                if (!bluetoothDevice) return;
+                updateStatus('正在连接...');
+                try {
+                    gattServer = await bluetoothDevice.gatt.connect();
+                    const service = await gattServer.getPrimaryService(SERVICE_UUID);
+                    txChar = await service.getCharacteristic(TX_CHAR_UUID);
+                    rxChar = await service.getCharacteristic(RX_CHAR_UUID);
+                    await rxChar.startNotifications();
+                    rxChar.addEventListener('characteristicvaluechanged', handleRxData);
+
+                    await sendCommand(CMD_REAL_TIME_STEP, [0x01]);
+                    await refreshData();
+
+                    deviceIdSpan.innerText = bluetoothDevice.name;
+                    dataSection.style.display = 'block';
+                    updateStatus('已连接，可点击按钮获取数据');
+                } catch (e) {
+                    updateStatus('连接失败: ' + e.message, true);
+                }
+            }
+
+            function disconnectDevice() {
+                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                    bluetoothDevice.gatt.disconnect();
+                }
+                dataSection.style.display = 'none';
+                tableContainer.style.display = 'none';
+                updateStatus('已断开');
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = true;
+                autoCollectActive = false;
+                hideLoading();
+            }
+
+            async function refreshData() {
+                if (!txChar) return;
+                await sendCommand(CMD_GET_BATTERY);
+                await sendCommand(CMD_GET_HISTORY_TOTAL, [0x00]);
+            }
+
+            async function fetchDetailSteps() {
+                if (!txChar) return;
+                await sendCommand(CMD_GET_DETAIL_STEPS, [0x00]);
+                updateStatus('52命令已发送，等待数据...');
+            }
+
+            async function fetchAcc() {
+                if (!txChar) return;
+                await sendCommand(CMD_GET_ACC_INSTANT, [0x00]);
+                await sendCommand(CMD_GET_ACC_CUMULATIVE, [0x00]);
+                updateStatus('53/54命令已发送，等待数据...');
+            }
+
+            // 事件绑定
+            scanBtn.addEventListener('click', scanDevices);
+            connectBtn.addEventListener('click', connectToDevice);
+            disconnectBtn.addEventListener('click', disconnectDevice);
+            refreshBtn.addEventListener('click', refreshData);
+            getDetailBtn.addEventListener('click', fetchDetailSteps);
+            getAccBtn.addEventListener('click', fetchAcc);
+            mergeBtn.addEventListener('click', mergeData);
+            reportBtn.addEventListener('click', () => generateDateRangeReport(false));
+            stopCollectBtn.addEventListener('click', stopCollect);
+
+            // 初始状态
+            connectBtn.disabled = true;
+            disconnectBtn.disabled = true;
+        })();
     </script>
-
-</body></html>
+</body>
+</html>
