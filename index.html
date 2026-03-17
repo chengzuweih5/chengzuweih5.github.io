@@ -1,1060 +1,1102 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="zh-CN"><head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BraceSense v3.0 · Data Report Station</title>
-    <!-- jsPDF and autoTable -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-    <!-- Chart.js for PDF charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BraceSense - 健康数据监测</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6', // 蓝色系主色调
+                        secondary: '#10b981', // 绿色表示健康状态良好
+                        neutral: '#f3f4f6', // 背景色
+                        dark: '#1e293b', // 深色文本
+                        light: '#f8fafc' // 浅色背景
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-shadow {
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            }
+            .gradient-bg {
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            }
+            .health-gradient {
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            }
+        }
+    </style>
     <style>
-        /* 完整样式，与之前相同，此处省略以节省篇幅，实际使用时请保留之前提供的完整样式 */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 16px; display: flex; flex-direction: column; align-items: center; }
-        .container { max-width: 1200px; width: 100%; background: white; border-radius: 24px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); position: relative; }
-        .ios-badge { background: #f2f2f7; border-radius: 30px; padding: 16px 20px; margin-bottom: 20px; border-left: 4px solid #007aff; font-size: 15px; }
-        .ios-badge a { color: #007aff; text-decoration: none; }
-        h1 { font-size: 28px; margin-bottom: 8px; color: #1c1c1e; }
-        .flex-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 15px 0; }
-        button { background: #007aff; border: none; color: white; font-size: 16px; font-weight: 500; padding: 14px 20px; border-radius: 40px; cursor: pointer; flex: 1; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,122,255,0.2); }
-        button.secondary { background: #f2f2f7; color: #1c1c1e; box-shadow: none; border: 1px solid #d9d9e0; }
-        button:disabled { opacity: 0.5; pointer-events: none; }
-        .status-box { background: #f8f9fc; border-radius: 16px; padding: 16px; margin: 15px 0; border: 1px solid #e5e5ea; font-size: 15px; }
-        .data-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
-        .data-card { background: #f8f9fc; border-radius: 18px; padding: 16px; text-align: center; }
-        .data-label { font-size: 14px; color: #6c6c70; margin-bottom: 6px; }
-        .data-value { font-size: 28px; font-weight: 700; color: #1c1c1e; }
-        .sub-value { font-size: 16px; color: #6c6c70; margin-top: 4px; }
-        .table-container { overflow-x: auto; margin-top: 25px; border-radius: 16px; border: 1px solid #e9ecf0; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 700px; }
-        th { background: #f2f2f7; color: #1c1c1e; font-weight: 600; padding: 14px 8px; white-space: nowrap; }
-        td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #efeff4; }
-        tr:last-child td { border-bottom: none; }
-        .acc-neg { color: #ff3b30; }
-        .acc-pos { color: #34c759; }
-        footer { font-size: 13px; color: #8e8e93; margin-top: 20px; text-align: center; }
-        .date-range {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 15px;
-            background: #f8f9fc;
-            padding: 15px;
-            border-radius: 20px;
-            margin: 20px 0 10px;
+        /* 自定义样式 */
+        .heart-rate-animation {
+            animation: heartbeat 1.5s ease-in-out infinite;
         }
-        .date-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        
+        @keyframes heartbeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.1); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.15); }
+            70% { transform: scale(1); }
         }
-        .date-item label {
-            font-size: 14px;
-            color: #6c6c70;
+        
+        .bluetooth-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
-        .date-item input {
-            padding: 8px 12px;
-            border-radius: 20px;
-            border: 1px solid #d9d9e0;
-            background: white;
-            font-size: 14px;
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
-        .report-btn-container {
-            flex: 1;
-            min-width: 180px;
+        
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
         }
-        #loadingOverlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            visibility: hidden;
+        
+        .tab-indicator {
+            transition: transform 0.3s ease;
         }
-        .loading-box {
-            background: white;
-            padding: 30px 40px;
-            border-radius: 24px;
-            text-align: center;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-            max-width: 400px;
+        
+        .device-list-item {
+            transition: all 0.2s ease;
         }
-        .spinner {
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid #007aff;
+        
+        .device-list-item:active {
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+        
+        /* 加载动画 */
+        .loading-spinner {
+            border: 3px solid rgba(59, 130, 246, 0.3);
             border-radius: 50%;
-            width: 50px;
-            height: 50px;
+            border-top: 3px solid #3b82f6;
+            width: 24px;
+            height: 24px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .progress-text { margin: 10px 0; font-size: 14px; color: #1c1c1e; }
-        .stopBtn { background: #ff3b30; margin-top: 15px; border: none; color: white; padding: 8px 20px; border-radius: 40px; cursor: pointer; }
-        /* 隐藏的画布容器，用于PDF生成 */
-        #pdfChartContainer {
-            position: fixed;
-            left: -1000px;
-            top: -1000px;
-            width: 800px;
-            height: 400px;
-            background: white;
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* 数据更新动画 */
+        .data-update {
+            animation: highlight 0.5s ease;
+        }
+        
+        @keyframes highlight {
+            0% { background-color: rgba(16, 185, 129, 0.2); }
+            100% { background-color: transparent; }
         }
     </style>
 </head>
-<body>
-    <!-- 加载遮罩层 -->
-    <div id="loadingOverlay">
-        <div class="loading-box">
-            <div class="spinner"></div>
-            <div id="loadingMessage">Fetching device data...</div>
-            <div class="progress-text" id="progressDetail">Initializing</div>
-            <button id="stopCollectBtn" class="stopBtn">Stop</button>
+<body class="bg-gray-50 font-sans">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fa fa-heartbeat text-primary text-2xl mr-2"></i>
+                <h1 class="text-xl font-bold text-dark">BraceSense</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button id="settingsBtn" class="text-gray-500 hover:text-primary transition-colors">
+                    <i class="fa fa-cog text-xl"></i>
+                </button>
+                <button id="helpBtn" class="text-gray-500 hover:text-primary transition-colors">
+                    <i class="fa fa-question-circle text-xl"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- 设备连接状态 -->
+        <section id="connectionStatus" class="mb-6">
+            <div class="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+                <div class="flex items-center">
+                    <div id="bluetoothIcon" class="w-10 h-10 rounded-full bg-primary bg-opacity-10 flex items-center justify-center mr-3">
+                        <i class="fa fa-bluetooth text-primary text-xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-dark">设备连接</h2>
+                        <p id="connectionStatusText" class="text-sm text-gray-500">未连接设备</p>
+                    </div>
+                </div>
+                <button id="connectBtn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors flex items-center">
+                    <i class="fa fa-search mr-2"></i>
+                    <span>扫描设备</span>
+                </button>
+            </div>
+        </section>
+
+
+        
+        <!-- 报告日期选择 -->
+        <section id="reportDateSelection" class="mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <h2 class="text-lg font-semibold text-dark mb-3">选择报告日期</h2>
+                <div class="flex flex-col md:flex-row gap-4">
+                    <div class="flex-1">
+                        <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">起始日期</label>
+                        <input type="date" id="startDate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                    </div>
+                    <div class="flex-1">
+                        <label for="endDate" class="block text-sm font-medium text-gray-700 mb-1">结束日期</label>
+                        <input type="date" id="endDate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                    </div>
+                    <div class="flex items-end">
+                        <button id="generateReportBtn" class="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors">
+                            生成报告
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">注：报告期限限定为28天</p>
+            </div>
+        </section>
+
+
+        <!-- 分享报告 -->
+        <section id="shareReport" class="mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-dark">分享报告</h2>
+                    <div class="flex space-x-2">
+                        <button id="downloadReportBtn" class="px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors flex items-center text-sm">
+                            <i class="fa fa-download mr-1"></i>
+                            <span>下载</span>
+                        </button>
+                        <button id="shareReportBtn" class="px-3 py-1 bg-primary text-white rounded-md hover:bg-blue-600 transition-colors flex items-center text-sm">
+                            <i class="fa fa-share-alt mr-1"></i>
+                            <span>分享</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
+                        <i class="fa fa-wechat text-green-500 mr-2"></i>
+                        <span>微信</span>
+                    </button>
+
+                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
+                        <i class="fa fa-envelope text-gray-500 mr-2"></i>
+                        <span>邮件</span>
+                    </button>
+                    <button class="share-option-btn px-3 py-2 border border-gray-200 rounded-md hover:border-primary hover:text-primary transition-colors flex items-center">
+                        <i class="fa fa-link text-gray-600 mr-2"></i>
+                        <span>复制链接</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+
+
+    <!-- 设备扫描弹窗 -->
+    <div id="deviceScanModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg w-11/12 max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-dark">扫描设备</h3>
+                <button id="closeScanModalBtn" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4 flex-grow overflow-y-auto">
+                <div id="scanningIndicator" class="flex items-center justify-center py-6">
+                    <div class="loading-spinner mr-3"></div>
+                    <span class="text-gray-500">正在扫描附近的设备...</span>
+                </div>
+                <div id="deviceList" class="hidden">
+                    <h4 class="text-sm font-medium text-gray-500 mb-2">可用设备</h4>
+                    <div class="space-y-2" id="deviceListContent"></div>
+                </div>
+                <div id="noDevicesFound" class="hidden py-6 text-center">
+                    <i class="fa fa-bluetooth text-gray-300 text-4xl mb-3"></i>
+                    <p class="text-gray-500">未找到可用设备</p>
+                    <p class="text-sm text-gray-400 mt-1">请确保设备已开启并处于配对模式</p>
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 flex justify-end">
+                <button id="stopScanBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">
+                    停止扫描
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- PDF图表专用的隐藏容器 -->
-    <div id="pdfChartContainer"></div>
-
-    <div class="container">
-        <!-- iOS 提示（英文） -->
-        <div class="ios-badge">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <span style="background: #007aff; color: white; padding: 4px 12px; border-radius: 30px; font-size: 13px; font-weight: 500;">📱 iPhone user</span>
-                <span style="color: #1c1c1e; font-weight: 500;">Safari does not support Bluetooth</span>
-            </div>
-            <ol>
-                <li>Download <strong>“Bluefy”</strong> from App Store (free). <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank">Open →</a></li>
-                <li>Open Bluefy, visit: <code>https://v3.app.bracesense.com</code></li>
-                <li>Allow Bluetooth permission when prompted.</li>
-            </ol>
-            <div style="margin-top: 10px; font-size: 14px; color: #6c6c70;">✅ Android/Windows: Chrome/Edge directly.</div>
+    <!-- 连接状态提示 -->
+    <div id="connectionToast" class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-dark text-white px-4 py-2 rounded-md shadow-lg z-50 hidden">
+        <div class="flex items-center">
+            <i id="connectionToastIcon" class="fa fa-check-circle mr-2"></i>
+            <span id="connectionToastText">设备连接成功</span>
         </div>
-
-        <h1>BraceSense v3.0</h1>
-
-        <!-- 扫描/断开按钮 -->
-        <div class="flex-row">
-            <button id="scanBtn" class="secondary">🔍 Scan Sensor by Bluetooth and Connect</button>
-            <button id="disconnectBtn" disabled class="secondary">⛔ Disconnect</button>
-        </div>
-
-        <!-- 日期范围与生成报告按钮 -->
-        <div class="date-range">
-            <div class="date-item">
-                <label>Start:</label>
-                <input type="date" id="startDateInput">
-            </div>
-            <div class="date-item">
-                <label>End:</label>
-                <input type="date" id="endDateInput">
-            </div>
-            <div class="report-btn-container">
-                <button id="reportBtn" class="secondary" style="width:100%;" onclick="generatePDFReport()">📄 Generate PDF Report</button>
-            </div>
-        </div>
-
-        <div class="status-box" id="status">⚪ Not connected. Click "Scan Sensor by Bluetooth and Connect" to find your Stride1850 sensor.</div>
-        <div id="deviceListContainer"></div>
-
-        <!-- 数据卡片区域 -->
-        <div id="dataSection" style="display: none;">
-            <div class="data-grid">
-                <div class="data-card">
-                    <div class="data-label">Battery</div>
-                    <div class="data-value" id="batteryValue">--</div>
-                </div>
-                <div class="data-card">
-                    <div class="data-label">Device ID (last 4)</div>
-                    <div class="data-value" id="deviceIdValue">--</div>
-                </div>
-                <div class="data-card">
-                    <div class="data-label">Date</div>
-                    <div class="data-value" id="dateValue">--</div>
-                    <div class="sub-value" id="timezoneLabel">(Asia/Shanghai)</div>
-                </div>
-                <div class="data-card">
-                    <div class="data-label">Total swings (L+H)</div>
-                    <div class="data-value" id="totalStepsValue">--</div>
-                    <div class="sub-value">High: <span id="highStepsValue">--</span></div>
-                </div>
-            </div>
-
-            <!-- 手动获取按钮和综合表格按钮 -->
-            <div class="flex-row">
-                <button id="refreshBtn" class="secondary">🔄 Refresh basic data</button>
-                <button id="getDetailBtn" class="secondary">📋 Fetch step details (52)</button>
-                <button id="getAccBtn" class="secondary">📊 Fetch ACC data (53)</button>
-                <button id="mergeBtn" class="secondary">📈 Generate Summary Table</button>
-            </div>
-
-            <!-- 综合表格（10分钟段） -->
-            <div id="tableContainer" class="table-container" style="display: none;">
-                <table id="detailTable">
-                    <thead>
-                        <tr>
-                            <th>10-min Segment</th>
-                            <th>Total Swings</th>
-                            <th>High Int.</th>
-                            <th>X</th>
-                            <th>Y</th>
-                            <th>Z</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <footer>Data processed locally · BraceSense v3.0</footer>
     </div>
 
     <script>
-        // 全局错误捕获
-        window.addEventListener('error', function(e) {
-            console.error('全局错误:', e.error || e.message);
+        // 模拟数据 - 28天历史数据
+        const generate28DaysData = () => {
+            const data = [];
+            const today = new Date();
+            
+            for (let i = 27; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                
+                // 生成每日步数数据（3000-12000步之间的随机数）
+                const dailySteps = Math.floor(Math.random() * 9000) + 3000;
+                
+                // 生成每小时步数数据
+                const hourlySteps = [];
+                for (let h = 0; h < 24; h++) {
+                    // 白天活动量更大，晚上活动量小
+                    let hourFactor = 1;
+                    if (h >= 0 && h < 6) hourFactor = 0.1; // 凌晨
+                    else if (h >= 6 && h < 9) hourFactor = 0.8; // 早晨
+                    else if (h >= 9 && h < 12) hourFactor = 0.6; // 上午
+                    else if (h >= 12 && h < 14) hourFactor = 0.7; // 中午
+                    else if (h >= 14 && h < 18) hourFactor = 0.9; // 下午
+                    else if (h >= 18 && h < 22) hourFactor = 1.0; // 晚上
+                    else hourFactor = 0.3; // 深夜
+                    
+                    hourlySteps.push(Math.floor((dailySteps / 24) * hourFactor * (Math.random() * 0.6 + 0.7)));
+                }
+                
+                // 生成加速度计数据（X/Y/Z轴）
+                const accelerometerData = {
+                    x: [],
+                    y: [],
+                    z: []
+                };
+                
+                // 每小时生成60个数据点（每分钟一个）
+                for (let h = 0; h < 24; h++) {
+                    for (let m = 0; m < 60; m++) {
+                        // 根据活动量调整加速度值
+                        const activityFactor = hourlySteps[h] / 100;
+                        
+                        // X轴加速度（左右方向）
+                        accelerometerData.x.push((Math.random() * 2 - 1) * activityFactor);
+                        
+                        // Y轴加速度（前后方向）
+                        accelerometerData.y.push((Math.random() * 2 - 1) * activityFactor * 1.2);
+                        
+                        // Z轴加速度（上下方向）
+                        accelerometerData.z.push((Math.random() * 2 - 0.5) * activityFactor * 0.8);
+                    }
+                }
+                
+                data.push({
+                    date: date.toISOString().split('T')[0],
+                    dailySteps,
+                    hourlySteps,
+                    accelerometerData
+                });
+            }
+            
+            return data;
+        };
+        
+        // 生成28天的模拟数据
+        const mockData = {
+            history: generate28DaysData(),
+            
+            // 图表显示用的数据
+            steps: {
+                day: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    values: [] // 将在选择日期时填充
+                },
+                week: {
+                    labels: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+                    values: [] // 将在选择周时填充
+                },
+                month: {
+                    labels: ['第1周', '第2周', '第3周', '第4周'],
+                    values: [] // 将在初始化时填充
+                }
+            },
+            accelerometer: {
+                day: {
+                    labels: Array.from({length: 24}, (_, i) => `${i.toString().padStart(2, '0')}:00`),
+                    x: [],
+                    y: [],
+                    z: []
+                }
+            }
+        };
+        
+        // 初始化月度数据（按周汇总）
+        for (let week = 0; week < 4; week++) {
+            let weekSteps = 0;
+            for (let day = 0; day < 7; day++) {
+                const index = week * 7 + day;
+                if (index < mockData.history.length) {
+                    weekSteps += mockData.history[index].dailySteps;
+                }
+            }
+            mockData.steps.month.values.push(weekSteps);
+        }
+
+        // AI健康建议
+        const aiInsights = [
+            "您的心率在正常范围内，继续保持良好的生活习惯。",
+            "建议增加每日步数至10,000步，有助于改善心血管健康。",
+            "您的睡眠质量良好，但睡眠时间略短，建议每晚保持7-8小时睡眠。",
+            "今日活动量充足，继续保持活跃的生活方式。",
+            "您的静息心率较低，表明心肺功能良好。"
+        ];
+
+        // 设备列表 - 只包含以"Stride"开头的设备
+        const mockDevices = [
+            { name: "Stride BraceSensor Pro", id: "device1", rssi: -65 },
+            { name: "Stride BraceSensor Mini", id: "device2", rssi: -72 },
+            { name: "Stride BraceSensor Lite", id: "device3", rssi: -80 }
+        ];
+
+        // DOM元素
+        const connectBtn = document.getElementById('connectBtn');
+        const connectionStatusText = document.getElementById('connectionStatusText');
+        const bluetoothIcon = document.getElementById('bluetoothIcon');
+        const deviceScanModal = document.getElementById('deviceScanModal');
+        const closeScanModalBtn = document.getElementById('closeScanModalBtn');
+        const scanningIndicator = document.getElementById('scanningIndicator');
+        const deviceList = document.getElementById('deviceList');
+        const deviceListContent = document.getElementById('deviceListContent');
+        const noDevicesFound = document.getElementById('noDevicesFound');
+        const stopScanBtn = document.getElementById('stopScanBtn');
+        const connectionToast = document.getElementById('connectionToast');
+        const connectionToastIcon = document.getElementById('connectionToastIcon');
+        const connectionToastText = document.getElementById('connectionToastText');
+        const totalStepsValue = document.getElementById('totalStepsValue');
+        const avgStepsPerDay = document.getElementById('avgStepsPerDay');
+        const activityLevel = document.getElementById('activityLevel');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const generateReportBtn = document.getElementById('generateReportBtn');
+        const timeRangeBtns = document.querySelectorAll('.time-range-btn');
+        const tabIndicator = document.querySelector('.tab-indicator');
+        const downloadReportBtn = document.getElementById('downloadReportBtn');
+        const shareReportBtn = document.getElementById('shareReportBtn');
+        const shareOptionBtns = document.querySelectorAll('.share-option-btn');
+
+        // 图表实例
+        let stepsChart, accelerometerChart;
+        let currentTimeRange = 'day';
+        let isConnected = false;
+        let scanInterval;
+        let selectedStartDate = null;
+        let selectedEndDate = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            setupEventListeners();
+            updateTabIndicator(0);
         });
 
-        // 所有初始化放在 DOMContentLoaded 中
-        window.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM已加载，开始初始化...');
-
-            // 检查关键元素是否存在
-            const requiredIds = [
-                'stopCollectBtn', 'loadingOverlay', 'pdfChartContainer',
-                'scanBtn', 'disconnectBtn', 'refreshBtn', 'getDetailBtn', 'getAccBtn', 'mergeBtn',
-                'startDateInput', 'endDateInput', 'status', 'deviceListContainer',
-                'dataSection', 'batteryValue', 'deviceIdValue', 'dateValue',
-                'timezoneLabel', 'totalStepsValue', 'highStepsValue',
-                'tableContainer', 'tableBody', 'loadingMessage', 'progressDetail'
-            ];
-
-            for (let id of requiredIds) {
-                if (!document.getElementById(id)) {
-                    console.error(`错误: 缺少必要元素 #${id}`);
-                    return;
-                }
-            }
-            console.log('所有必要元素存在，继续初始化...');
-
-            // ---------- 全局变量 ----------
-            window.SERVICE_UUID = '0000fff0-0000-1000-8000-00805f9b34fb';
-            window.TX_CHAR_UUID = '0000fff6-0000-1000-8000-00805f9b34fb';
-            window.RX_CHAR_UUID = '0000fff7-0000-1000-8000-00805f9b34fb';
-
-            window.CMD_REAL_TIME_STEP = 0x09;
-            window.CMD_GET_BATTERY = 0x13;
-            window.CMD_GET_HISTORY_TOTAL = 0x51;
-            window.CMD_GET_DETAIL_STEPS = 0x52;
-            window.CMD_GET_ACC_INSTANT = 0x53;
-
-            window.bluetoothDevice = null;
-            window.gattServer = null;
-            window.txChar = null;
-            window.rxChar = null;
-            window.totalSteps = 0;
-            window.highSteps = 0;
-            window.batteryLevel = '--';
-            window.stepsDetails = [];
-            window.accInstant = [];
-
-            window.autoCollectActive = false;
-            window.currentCommand = null;
-            window.commandTimeout = null;
-            window.recordCount = 0;
-            window.stopRequested = false;
-            window.isReportMode = false;
-
-            // ---------- 辅助函数 ----------
-            function updateStatus(msg, isError = false) {
-                const statusDiv = document.getElementById('status');
-                statusDiv.innerText = msg;
-                statusDiv.style.background = isError ? '#ffeeee' : '#ffffff';
-            }
-
-            function showLoading(msg) {
-                const loadingMessage = document.getElementById('loadingMessage');
-                const loadingOverlay = document.getElementById('loadingOverlay');
-                loadingMessage.innerText = msg || 'Fetching device data...';
-                loadingOverlay.style.visibility = 'visible';
-            }
-
-            function hideLoading() {
-                const loadingOverlay = document.getElementById('loadingOverlay');
-                loadingOverlay.style.visibility = 'hidden';
-            }
-
-            function updateProgress(detail) {
-                const progressDetail = document.getElementById('progressDetail');
-                progressDetail.innerText = detail;
-            }
-
-            function calcCRC(bytes) {
-                let sum = 0;
-                for (let i = 0; i < 15; i++) sum += bytes[i];
-                return sum & 0xFF;
-            }
-
-            function buildCommand(cmd, params = []) {
-                const buffer = new ArrayBuffer(16);
-                const view = new Uint8Array(buffer);
-                view[0] = cmd;
-                for (let i = 0; i < params.length && i < 14; i++) view[1 + i] = params[i];
-                for (let i = 1 + params.length; i < 15; i++) view[i] = 0;
-                view[15] = calcCRC(view);
-                return buffer;
-            }
-
-            async function sendCommand(cmd, params = []) {
-                if (!window.txChar) throw new Error('TX characteristic not available');
-                const buffer = buildCommand(cmd, params);
-                await window.txChar.writeValue(buffer);
-                console.log(`Command sent: 0x${cmd.toString(16)}`, params);
-            }
-
-            // ---------- 解析函数 ----------
-            function parseUint32LE(bytes, start) {
-                return bytes[start] | (bytes[start+1] << 8) | (bytes[start+2] << 16) | (bytes[start+3] << 24);
-            }
-
-            function parseInt16LE(bytes, start) {
-                let val = bytes[start] | (bytes[start+1] << 8);
-                if (val >= 0x8000) val -= 0x10000;
-                return val;
-            }
-
-            function bcdToDec(b) {
-                return ((b >> 4) * 10) + (b & 0x0F);
-            }
-
-            function bcdToDate(y, m, d, h, min, s) {
-                return new Date(2000 + bcdToDec(y), bcdToDec(m)-1, bcdToDec(d), bcdToDec(h), bcdToDec(min), bcdToDec(s));
-            }
-
-            function updateStepDisplay() {
-                const totalStepsSpan = document.getElementById('totalStepsValue');
-                const highStepsSpan = document.getElementById('highStepsValue');
-                totalStepsSpan.innerText = Math.floor(window.totalSteps / 2);
-                highStepsSpan.innerText = Math.floor(window.highSteps / 2);
-            }
-
-            // ---------- 数据处理 ----------
-            function handleRxData(event) {
-                const value = event.target.value;
-                if (!value) return;
-
-                const fullBytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-                console.log('Raw packet:', Array.from(fullBytes).map(b => b.toString(16).padStart(2,'0')).join(' '));
-
-                let offset = 0;
-                while (offset < fullBytes.length) {
-                    const cmd = fullBytes[offset] & 0x7F;
-                    
-                    if (offset + 1 < fullBytes.length && fullBytes[offset+1] === 0xFF) {
-                        console.log(`End packet for command 0x${cmd.toString(16)}`);
-                        if (window.autoCollectActive && cmd === window.currentCommand) {
-                            finishCurrentCommand(window.isReportMode);
-                        }
-                        offset += 2;
-                        continue;
-                    }
-
-                    if (cmd === window.CMD_GET_DETAIL_STEPS) {
-                        if (offset + 27 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 27);
-                        parse52(rec);
-                        offset += 27;
-                        if (window.autoCollectActive && cmd === window.currentCommand) {
-                            window.recordCount++;
-                            updateProgress(`Step details: received ${window.recordCount} records`);
-                            resetCommandTimeout(window.isReportMode);
-                        }
-                    } else if (cmd === window.CMD_GET_ACC_INSTANT) {
-                        if (offset + 15 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 15);
-                        parse53(rec);
-                        offset += 15;
-                        if (window.autoCollectActive && cmd === window.currentCommand) {
-                            window.recordCount++;
-                            updateProgress(`Instant ACC: received ${window.recordCount} records`);
-                            resetCommandTimeout(window.isReportMode);
-                        }
-                    } else if (cmd === window.CMD_GET_BATTERY) {
-                        if (offset + 16 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 16);
-                        parse13(rec);
-                        offset += 16;
-                    } else if (cmd === window.CMD_GET_HISTORY_TOTAL) {
-                        if (offset + 26 > fullBytes.length) break;
-                        const rec = fullBytes.slice(offset, offset + 26);
-                        parse51(rec);
-                        offset += 26;
-                    } else {
-                        offset++;
-                    }
-                }
-            }
-
-            function parse13(bytes) {
-                if ((bytes[0] & 0x7F) !== window.CMD_GET_BATTERY) return;
-                const level = bytes[1];
-                if (level === 0) window.batteryLevel = 'Low';
-                else if (level === 1) window.batteryLevel = 'Normal';
-                else if (level === 2) window.batteryLevel = 'Full';
-                else window.batteryLevel = `Unknown(${level})`;
-                document.getElementById('batteryValue').innerText = window.batteryLevel;
-            }
-
-            function parse51(bytes) {
-                if ((bytes[0] & 0x7F) !== window.CMD_GET_HISTORY_TOTAL) return;
-                const id = bytes[1];
-                if (id === 0) {
-                    window.totalSteps = parseUint32LE(bytes, 5);
-                    window.highSteps = parseUint32LE(bytes, 22);
-                    updateStepDisplay();
-                }
-            }
-
-            function parse52(bytes) {
-                if ((bytes[0] & 0x7F) !== window.CMD_GET_DETAIL_STEPS) return;
-                const year = bytes[3];
-                const month = bytes[4];
-                const day = bytes[5];
-                const hour = bytes[6];
-                const minute = bytes[7];
-                const second = bytes[8];
-                const startTime = bcdToDate(year, month, day, hour, minute, second);
-                const total = (bytes[9] | (bytes[10] << 8));
-                const high = (bytes[11] | (bytes[12] << 8));
-                window.stepsDetails.push({ startTime, totalSteps: total, highSteps: high });
-            }
-
-            function parse53(bytes) {
-                if ((bytes[0] & 0x7F) !== window.CMD_GET_ACC_INSTANT) return;
-                const year = bytes[3];
-                const month = bytes[4];
-                const day = bytes[5];
-                const hour = bytes[6];
-                const minute = bytes[7];
-                const second = bytes[8];
-                const time = bcdToDate(year, month, day, hour, minute, second);
-                const x = parseInt16LE(bytes, 9);
-                const y = parseInt16LE(bytes, 11);
-                const z = parseInt16LE(bytes, 13);
-                window.accInstant.push({ time, x, y, z });
-            }
-
-            // ---------- 自动采集流程 ----------
-            function resetCommandTimeout(reportMode) {
-                if (window.commandTimeout) clearTimeout(window.commandTimeout);
-                window.commandTimeout = setTimeout(() => {
-                    console.log(`Command ${window.currentCommand} timeout, ending`);
-                    finishCurrentCommand(reportMode);
-                }, 15000);
-            }
-
-            function startCommand(cmd, reportMode) {
-                if (window.stopRequested) {
-                    finishAutoCollect(reportMode);
-                    return;
-                }
-                window.currentCommand = cmd;
-                window.recordCount = 0;
-                updateProgress(`${cmd === window.CMD_GET_DETAIL_STEPS ? 'Step details' : 'Instant ACC'}: waiting for data...`);
-                sendCommand(cmd, [0x00]);
-                resetCommandTimeout(reportMode);
-            }
-
-            function finishCurrentCommand(reportMode) {
-                if (window.commandTimeout) clearTimeout(window.commandTimeout);
-                window.commandTimeout = null;
-                if (!window.autoCollectActive) return;
-                console.log(`Finished command: ${window.currentCommand}`);
-                if (window.currentCommand === window.CMD_GET_DETAIL_STEPS) {
-                    startCommand(window.CMD_GET_ACC_INSTANT, reportMode);
-                } else if (window.currentCommand === window.CMD_GET_ACC_INSTANT) {
-                    finishAutoCollect(reportMode);
-                }
-            }
-
-            function finishAutoCollect(reportMode) {
-                if (window.commandTimeout) clearTimeout(window.commandTimeout);
-                window.commandTimeout = null;
-                window.autoCollectActive = false;
-                window.currentCommand = null;
-                hideLoading();
-                
-                if (reportMode) {
-                    generatePDFReport();
-                    updateStatus('Report generated. You can generate another report if needed.');
-                } else {
-                    updateStatus('Data collection completed. You can now generate a report.');
-                }
-            }
-
-            function stopCollect() {
-                if (window.autoCollectActive) {
-                    window.stopRequested = true;
-                    finishAutoCollect(window.isReportMode);
-                }
-            }
-
-            async function startAutoCollect(reportMode = false) {
-                window.stepsDetails = [];
-                window.accInstant = [];
-                window.stopRequested = false;
-                window.autoCollectActive = true;
-                window.isReportMode = reportMode;
-
-                showLoading('Connected and Collecting Data, Please wait');
-                startCommand(window.CMD_GET_DETAIL_STEPS, reportMode);
-            }
-
-            // ---------- 辅助函数 ----------
-            function floorTo10Minutes(date) {
-                const d = new Date(date);
-                const minutes = d.getMinutes();
-                const remainder = minutes % 10;
-                d.setMinutes(minutes - remainder);
-                d.setSeconds(0);
-                d.setMilliseconds(0);
-                return d;
-            }
-
-            function formatDate(d) {
-                const y = d.getFullYear();
-                const m = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                return `${y}-${m}-${day}`;
-            }
-
-            function formatDateTime(d) {
-                if (!d) return '';
-                const y = d.getFullYear();
-                const m = String(d.getMonth()+1).padStart(2,'0');
-                const d2 = String(d.getDate()).padStart(2,'0');
-                const h = String(d.getHours()).padStart(2,'0');
-                const min = String(d.getMinutes()).padStart(2,'0');
-                const s = String(d.getSeconds()).padStart(2,'0');
-                return `${y}-${m}-${d2} ${h}:${min}:${s}`;
-            }
-
-            // ---------- 综合表格 ----------
-            function mergeData() {
-                window.stepsDetails.sort((a,b) => a.startTime - b.startTime);
-                window.accInstant.sort((a,b) => a.time - b.time);
-
-                const merged = window.stepsDetails.map(step => {
-                    const start = step.startTime;
-                    const end = new Date(start.getTime() + 10*60*1000 - 1);
-                    const mid = new Date(start.getTime() + 5*60*1000);
-                    
-                    const totalRaw = step.totalSteps;
-                    const highRaw = step.highSteps;
-                    let totalVal = Math.floor(totalRaw / 2);
-                    let highVal = Math.floor(highRaw / 2);
-                    
-                    if (totalVal < highVal) {
-                        console.warn(`Data anomaly: total (${totalVal}) < high (${highVal}) at ${formatDateTime(start)}`);
-                    }
-
-                    let closestInstant = null;
-                    let minDiff = Infinity;
-                    for (let a of window.accInstant) {
-                        if (a.time >= start && a.time <= end) {
-                            const diff = Math.abs(a.time - mid);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestInstant = a;
-                            }
-                        }
-                    }
-                    return {
-                        segmentStr: formatSegment(start),
-                        timestamp: start.getTime(),
-                        totalSteps: totalVal,
-                        highSteps: highVal,
-                        x: closestInstant ? closestInstant.x : '--',
-                        y: closestInstant ? closestInstant.y : '--',
-                        z: closestInstant ? closestInstant.z : '--'
-                    };
-                });
-
-                merged.sort((a, b) => b.timestamp - a.timestamp);
-                renderTable(merged);
-                document.getElementById('tableContainer').style.display = 'block';
-                console.log('mergeData finished, stepsDetails length =', window.stepsDetails.length);
-            }
-
-            function formatSegment(date) {
-                const d = floorTo10Minutes(date);
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
-                const hour = String(d.getHours()).padStart(2, '0');
-                const startMin = String(d.getMinutes()).padStart(2, '0');
-                const endMin = String(d.getMinutes() + 10).padStart(2, '0');
-                return `${year}-${month}-${day} ${hour}:${startMin}-${endMin}`;
-            }
-
-            function renderTable(data) {
-                const tableBody = document.getElementById('tableBody');
-                tableBody.innerHTML = '';
-                data.forEach(row => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${row.segmentStr}</td>
-                        <td>${row.totalSteps}</td>
-                        <td>${row.highSteps}</td>
-                        <td class="${row.x !== '--' && row.x < 0 ? 'acc-neg' : 'acc-pos'}">${row.x}</td>
-                        <td class="${row.y !== '--' && row.y < 0 ? 'acc-neg' : 'acc-pos'}">${row.y}</td>
-                        <td class="${row.z !== '--' && row.z < 0 ? 'acc-neg' : 'acc-pos'}">${row.z}</td>
-                    `;
-                    tableBody.appendChild(tr);
-                });
-            }
-
-            // ---------- 蓝牙操作 ----------
-            async function scanDevices() {
-                if (!navigator.bluetooth) {
-                    alert('Web Bluetooth not supported. Please use Chrome, Edge, or Bluefy on iOS.');
-                    return;
-                }
-                try {
-                    const device = await navigator.bluetooth.requestDevice({
-                        filters: [{ namePrefix: "Stride1850" }],
-                        optionalServices: [window.SERVICE_UUID]
-                    });
-                    window.bluetoothDevice = device;
-                    updateStatus(`Connecting to ${device.name}...`);
-
-                    await connectToDevice();
-                } catch (e) {
-                    updateStatus('Scan cancelled or failed', true);
-                }
-            }
-
-            async function connectToDevice() {
-                if (!window.bluetoothDevice) return;
-                try {
-                    window.gattServer = await window.bluetoothDevice.gatt.connect();
-                    const service = await window.gattServer.getPrimaryService(window.SERVICE_UUID);
-                    window.txChar = await service.getCharacteristic(window.TX_CHAR_UUID);
-                    window.rxChar = await service.getCharacteristic(window.RX_CHAR_UUID);
-                    await window.rxChar.startNotifications();
-                    window.rxChar.addEventListener('characteristicvaluechanged', handleRxData);
-
-                    await sendCommand(window.CMD_REAL_TIME_STEP, [0x01]);
-                    await refreshData();
-
-                    if (window.bluetoothDevice.name) {
-                        const name = window.bluetoothDevice.name;
-                        const match = name.match(/([A-F0-9]{4})$/i);
-                        document.getElementById('deviceIdValue').innerText = match ? match[1].toUpperCase() : name.slice(-4);
-                    } else {
-                        document.getElementById('deviceIdValue').innerText = '----';
-                    }
-
-                    document.getElementById('dataSection').style.display = 'block';
-                    updateStatus('Connected. Fetching all historical data...');
-
-                    document.getElementById('scanBtn').innerText = '✅ Connected';
-                    document.getElementById('scanBtn').style.backgroundColor = '#34c759';
-                    document.getElementById('scanBtn').style.borderColor = '#34c759';
-                    document.getElementById('scanBtn').style.color = 'white';
-                    document.getElementById('scanBtn').disabled = true;
-
-                    document.getElementById('disconnectBtn').disabled = false;
-
-                    await startAutoCollect(true);
-                } catch (e) {
-                    updateStatus('Connection failed: ' + e.message, true);
-                }
-            }
-
-            function disconnectDevice() {
-                if (window.bluetoothDevice && window.bluetoothDevice.gatt.connected) {
-                    window.bluetoothDevice.gatt.disconnect();
-                }
-                document.getElementById('dataSection').style.display = 'none';
-                document.getElementById('tableContainer').style.display = 'none';
-                updateStatus('Disconnected');
-                document.getElementById('disconnectBtn').disabled = true;
-                window.autoCollectActive = false;
-                hideLoading();
-
-                document.getElementById('scanBtn').innerText = '🔍 Scan Sensor by Bluetooth and Connect';
-                document.getElementById('scanBtn').style.backgroundColor = '';
-                document.getElementById('scanBtn').style.borderColor = '';
-                document.getElementById('scanBtn').style.color = '';
-                document.getElementById('scanBtn').disabled = false;
-            }
-
-            async function refreshData() {
-                if (!window.txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(window.CMD_GET_BATTERY);
-                await sendCommand(window.CMD_GET_HISTORY_TOTAL, [0x00]);
-                updateStatus('Basic data refreshed');
-            }
-
-            async function fetchDetailSteps() {
-                if (!window.txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(window.CMD_GET_DETAIL_STEPS, [0x00]);
-                updateStatus('Step detail command sent');
-            }
-
-            async function fetchAcc() {
-                if (!window.txChar) {
-                    alert('Please connect to a device first.');
-                    return;
-                }
-                await sendCommand(window.CMD_GET_ACC_INSTANT, [0x00]);
-                updateStatus('ACC command sent');
-            }
-
-            // ---------- 全局PDF生成函数（最终修复版）----------
-            window.generatePDFReport = async function generatePDFReport() {
-                console.log('=== PDF生成开始 (全局函数) ===');
-                console.log('stepsDetails长度:', window.stepsDetails.length);
-                if (window.stepsDetails.length === 0) {
-                    console.log('无数据，启动自动采集');
-                    startAutoCollect(true);
-                    return;
-                }
-
-                const startDateInput = document.getElementById('startDateInput');
-                const endDateInput = document.getElementById('endDateInput');
-                const startDateStr = startDateInput.value;
-                const endDateStr = endDateInput.value;
-                if (!startDateStr || !endDateStr) {
-                    alert('Please select start and end dates');
-                    return;
-                }
-
-                const startDate = new Date(startDateStr + 'T00:00:00');
-                const endDate = new Date(endDateStr + 'T23:59:59.999');
-
-                // 生成所有需要显示的日期列表
-                const days = [];
-                let current = new Date(startDate);
-                while (current <= endDate) {
-                    days.push(new Date(current));
-                    current.setDate(current.getDate() + 1);
-                }
-                console.log('日期范围天数:', days.length);
-
-                // 构建步数映射
-                const stepsMap = new Map();
-                window.stepsDetails.forEach(step => {
-                    const key = floorTo10Minutes(step.startTime).getTime();
-                    stepsMap.set(key, step);
-                });
-                console.log('stepsMap大小:', stepsMap.size);
-
-                // 加速度数据排序
-                window.accInstant.sort((a, b) => a.time - b.time);
-
-                // 获取设备ID后四位
-                let deviceLast4 = '----';
-                if (window.bluetoothDevice && window.bluetoothDevice.name) {
-                    const name = window.bluetoothDevice.name;
-                    const match = name.match(/([A-F0-9]{4})$/i);
-                    if (match) deviceLast4 = match[1].toUpperCase();
-                }
-
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-
-                const pdfChartContainer = document.getElementById('pdfChartContainer');
-                pdfChartContainer.innerHTML = '';
-
-                const pageWidth = 842;
-                const pageHeight = 595;
-                const margin = 20;
-                const headerY = 30;
-                const chartTop = 50;
-                const cols = 4;
-                const rows = 2;
-                const gap = 8;
-                const chartWidth = (pageWidth - 2 * margin - (cols - 1) * gap) / cols;
-                const chartHeight = (pageHeight - chartTop - margin - (rows - 1) * gap) / rows;
-                console.log('图表尺寸:', chartWidth, chartHeight);
-
-                function getWeekIndex(date) {
-                    return (date.getDay() + 6) % 7;
-                }
-
-                const weeks = [];
-                let i = 0;
-                while (i < days.length) {
-                    const week = new Array(7).fill(null);
-                    const firstDayOfWeek = new Date(days[i]);
-                    firstDayOfWeek.setDate(days[i].getDate() - getWeekIndex(days[i]));
-                    for (let j = 0; j < 7; j++) {
-                        const day = new Date(firstDayOfWeek);
-                        day.setDate(firstDayOfWeek.getDate() + j);
-                        if (i < days.length && days[i].toDateString() === day.toDateString()) {
-                            week[j] = days[i];
-                            i++;
-                        }
-                    }
-                    weeks.push(week);
-                }
-
-                for (let w = 0; w < weeks.length; w++) {
-                    const week = weeks[w];
-                    const weekStart = week.find(d => d !== null);
-                    const weekEnd = week.slice().reverse().find(d => d !== null);
-                    if (!weekStart || !weekEnd) continue;
-
-                    if (w > 0) doc.addPage();
-
-                    doc.setFontSize(11);
-                    const leftText = `BraceSense Report ${formatDate(weekStart)} to ${formatDate(weekEnd)} (ID:${deviceLast4})`;
-                    const rightText = new Date().toLocaleString();
-                    doc.text(leftText, margin, headerY);
-                    doc.text(rightText, pageWidth - margin - doc.getTextWidth(rightText), headerY);
-
-                    for (let idx = 0; idx < 7; idx++) {
-                        const day = week[idx];
-                        if (!day) continue;
-
-                        const dateStr = formatDate(day);
-                        console.log(`\n处理日期: ${dateStr}`);
-
-                        const totalData = [];
-                        const highData = [];
-                        const xData = [];
-                        const yData = [];
-                        const zData = [];
-
-                        for (let hour = 0; hour < 24; hour++) {
-                            for (let min = 0; min < 60; min += 10) {
-                                const pointTime = new Date(day);
-                                pointTime.setHours(hour, min, 0, 0);
-                                const pointKey = pointTime.getTime();
-
-                                const step = stepsMap.get(pointKey);
-                                const total = step ? Math.floor(step.totalSteps / 2) : null;
-                                const high = step ? Math.floor(step.highSteps / 2) : null;
-                                totalData.push(total);
-                                highData.push(high);
-
-                                const slotStart = pointTime;
-                                const slotEnd = new Date(pointTime.getTime() + 10 * 60 * 1000 - 1);
-                                const midTime = new Date(pointTime.getTime() + 5 * 60 * 1000);
-                                let closest = null;
-                                let minDiff = Infinity;
-                                for (let a of window.accInstant) {
-                                    if (a.time >= slotStart && a.time <= slotEnd) {
-                                        const diff = Math.abs(a.time - midTime);
-                                        if (diff < minDiff) {
-                                            minDiff = diff;
-                                            closest = a;
-                                        }
-                                    }
+        // 初始化图表
+        function initCharts() {
+            // 步数图表
+            const stepsCtx = document.getElementById('stepsChart').getContext('2d');
+            stepsChart = new Chart(stepsCtx, {
+                type: 'bar',
+                data: {
+                    labels: mockData.steps.day.labels,
+                    datasets: [{
+                        label: '步数',
+                        data: mockData.steps.day.values,
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderRadius: 4,
+                        maxBarThickness: 30
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            titleColor: '#1e293b',
+                            bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0',
+                            borderWidth: 1,
+                            padding: 10,
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `步数: ${context.parsed.y}`;
                                 }
-                                xData.push(closest ? closest.x : null);
-                                yData.push(closest ? closest.y : null);
-                                zData.push(closest ? closest.z : null);
                             }
                         }
-
-                        const nonNullTotal = totalData.filter(v => v !== null).length;
-                        const nonNullHigh = highData.filter(v => v !== null).length;
-                        const nonNullX = xData.filter(v => v !== null).length;
-                        console.log(`  total非空 = ${nonNullTotal}, high非空 = ${nonNullHigh}, X非空 = ${nonNullX}`);
-
-                        const row = Math.floor(idx / cols);
-                        const col = idx % cols;
-                        const xPos = margin + col * (chartWidth + gap);
-                        const yPos = chartTop + row * (chartHeight + gap);
-
-                        if (nonNullTotal === 0 && nonNullX === 0) {
-                            doc.setFontSize(10);
-                            doc.text('No data for this date', xPos, yPos - 10);
-                            continue;
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
                         }
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
 
-                        const allCounts = [...totalData, ...highData].filter(v => v !== null);
-                        const maxCount = allCounts.length > 0 ? Math.max(...allCounts) : 10;
-                        const leftMin = 0;
-                        const leftMax = Math.max(maxCount * 1.2, 10);
-
-                        // 创建 canvas
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 800;
-                        canvas.height = 400;
-                        canvas.style.width = '800px';
-                        canvas.style.height = '400px';
-                        pdfChartContainer.appendChild(canvas);
-
-                        const ctx = canvas.getContext('2d');
-                        const chart = new Chart(ctx, {
-                            type: 'line',
-                            data: {
-                                labels: [],
-                                datasets: [
-                                    { 
-                                        label: 'Total Swings', 
-                                        data: totalData, 
-                                        borderColor: 'rgba(54, 162, 235, 1)', 
-                                        backgroundColor: 'rgba(54, 162, 235, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 2, 
-                                        yAxisID: 'y'      
-                                    },
-                                    { 
-                                        label: 'High Int.', 
-                                        data: highData, 
-                                        borderColor: 'rgba(255, 99, 132, 1)', 
-                                        backgroundColor: 'rgba(255, 99, 132, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 2, 
-                                        yAxisID: 'y'      
-                                    },
-                                    { 
-                                        label: 'X', 
-                                        data: xData, 
-                                        borderColor: 'rgba(75, 192, 192, 1)', 
-                                        backgroundColor: 'rgba(75, 192, 192, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    },
-                                    { 
-                                        label: 'Y', 
-                                        data: yData, 
-                                        borderColor: 'rgba(153, 102, 255, 1)', 
-                                        backgroundColor: 'rgba(153, 102, 255, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    },
-                                    { 
-                                        label: 'Z', 
-                                        data: zData, 
-                                        borderColor: 'rgba(255, 159, 64, 1)', 
-                                        backgroundColor: 'rgba(255, 159, 64, 0.1)', 
-                                        tension: 0.4, 
-                                        pointRadius: 1, 
-                                        borderWidth: 1.5, 
-                                        yAxisID: 'y1'     
-                                    }
-                                ]
+            // 加速度计图表
+            const accelerometerCtx = document.getElementById('accelerometerChart').getContext('2d');
+            accelerometerChart = new Chart(accelerometerCtx, {
+                type: 'line',
+                data: {
+                    labels: mockData.accelerometer.day.labels,
+                    datasets: [
+                        {
+                            label: 'X轴',
+                            data: mockData.accelerometer.day.x,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Y轴',
+                            data: mockData.accelerometer.day.y,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Z轴',
+                            data: mockData.accelerometer.day.z,
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 6
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            titleColor: '#1e293b',
+                            bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0',
+                            borderWidth: 1,
+                            padding: 10
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 0.05)'
                             },
-                            options: {
-                                responsive: false,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: false },
-                                    tooltip: { enabled: false }
-                                },
-                                scales: {
-                                    x: { display: false },
-                                    y: {  
-                                        type: 'linear',
-                                        position: 'left',
-                                        min: leftMin,
-                                        max: leftMax,
-                                        ticks: { display: false },
-                                        grid: { display: false }
-                                    },
-                                    y1: { 
-                                        type: 'linear',
-                                        position: 'right',
-                                        min: -200,
-                                        max: 200,
-                                        ticks: { display: false },
-                                        grid: { display: false }
-                                    }
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toFixed(1);
                                 }
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    animation: {
+                        duration: 1000,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 连接按钮点击事件
+            connectBtn.addEventListener('click', () => {
+                openDeviceScanModal();
+                startDeviceScan();
+            });
+
+            // 关闭扫描弹窗按钮点击事件
+            closeScanModalBtn.addEventListener('click', closeDeviceScanModal);
+
+            // 停止扫描按钮点击事件
+            stopScanBtn.addEventListener('click', stopDeviceScan);
+
+            // 时间范围按钮点击事件
+            timeRangeBtns.forEach((btn, index) => {
+                btn.addEventListener('click', () => {
+                    const range = btn.dataset.range;
+                    currentTimeRange = range;
+                    updateCharts(range);
+                    updateTabIndicator(index);
+                });
+            });
+
+            // 日期选择器事件
+            startDateInput.addEventListener('change', updateDateRange);
+            endDateInput.addEventListener('change', updateDateRange);
+            
+            // 初始化日期范围
+            initDateRange();
+
+            // 生成报告按钮点击事件
+            generateReportBtn.addEventListener('click', generateReport);
+
+            // 下载报告按钮点击事件
+            downloadReportBtn.addEventListener('click', downloadPDFReport);
+
+            // 分享报告按钮点击事件
+            shareReportBtn.addEventListener('click', shareReport);
+
+            // 分享选项按钮点击事件
+            shareOptionBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const platform = btn.querySelector('span').textContent;
+                    shareReportToPlatform(platform);
+                });
+            });
+        }
+
+        // 初始化日期范围
+        function initDateRange() {
+            const today = new Date();
+            const defaultEndDate = today;
+            const defaultStartDate = new Date();
+            defaultStartDate.setDate(today.getDate() - 7); // 默认显示最近7天
+            
+            // 设置日期输入框的最大值为今天
+            const maxDate = today.toISOString().split('T')[0];
+            startDateInput.max = maxDate;
+            endDateInput.max = maxDate;
+            
+            // 设置默认日期范围
+            startDateInput.value = defaultStartDate.toISOString().split('T')[0];
+            endDateInput.value = defaultEndDate.toISOString().split('T')[0];
+            
+            selectedStartDate = defaultStartDate;
+            selectedEndDate = defaultEndDate;
+        }
+
+        // 更新日期范围
+        function updateDateRange() {
+            const startDate = new Date(startDateInput.value);
+            const endDate = new Date(endDateInput.value);
+            const today = new Date();
+            
+            // 验证日期范围
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                showToast('请选择有效的日期范围', 'error');
+                return;
+            }
+            
+            // 检查开始日期是否早于结束日期
+            if (startDate > endDate) {
+                showToast('开始日期不能晚于结束日期', 'error');
+                return;
+            }
+            
+            // 检查日期范围是否超过28天
+            const diffTime = Math.abs(endDate - startDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 28) {
+                showToast('报告期限不能超过28天', 'error');
+                return;
+            }
+            
+            selectedStartDate = startDate;
+            selectedEndDate = endDate;
+            
+            // 如果已连接设备，更新数据显示
+            if (isConnected) {
+                updateDataOverview();
+                updateCharts(currentTimeRange);
+            }
+        }
+
+        // 打开设备扫描弹窗
+        function openDeviceScanModal() {
+            deviceScanModal.classList.remove('hidden');
+        }
+
+        // 关闭设备扫描弹窗
+        function closeDeviceScanModal() {
+            deviceScanModal.classList.add('hidden');
+            stopDeviceScan();
+        }
+
+        // 开始设备扫描
+        function startDeviceScan() {
+            scanningIndicator.classList.remove('hidden');
+            deviceList.classList.add('hidden');
+            noDevicesFound.classList.add('hidden');
+            deviceListContent.innerHTML = '';
+
+            // 模拟扫描过程
+            scanInterval = setTimeout(() => {
+                if (mockDevices.length > 0) {
+                    scanningIndicator.classList.add('hidden');
+                    deviceList.classList.remove('hidden');
+                    renderDeviceList();
+                } else {
+                    scanningIndicator.classList.add('hidden');
+                    noDevicesFound.classList.remove('hidden');
+                }
+            }, 2000);
+        }
+
+        // 停止设备扫描
+        function stopDeviceScan() {
+            clearTimeout(scanInterval);
+            scanningIndicator.classList.add('hidden');
+        }
+
+        // 渲染设备列表
+        function renderDeviceList() {
+            deviceListContent.innerHTML = '';
+            mockDevices.forEach(device => {
+                const deviceItem = document.createElement('div');
+                deviceItem.className = 'device-list-item p-3 border border-gray-200 rounded-md flex justify-between items-center cursor-pointer';
+                deviceItem.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="w-8 h-8 rounded-full bg-primary bg-opacity-10 flex items-center justify-center mr-3">
+                            <i class="fa fa-bluetooth text-primary"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-medium text-dark">${device.name}</h4>
+                            <p class="text-xs text-gray-500">信号强度: ${device.rssi} dBm</p>
+                        </div>
+                    </div>
+                    <button class="connect-device-btn px-3 py-1 bg-primary text-white text-xs rounded-md hover:bg-blue-600 transition-colors">
+                        连接
+                    </button>
+                `;
+                
+                // 连接按钮点击事件
+                deviceItem.querySelector('.connect-device-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    connectToDevice(device);
+                });
+                
+                deviceListContent.appendChild(deviceItem);
+            });
+        }
+
+        // 连接到设备
+        function connectToDevice(device) {
+            showToast(`正在连接到 ${device.name}...`, 'info');
+            
+            // 模拟连接过程
+            setTimeout(() => {
+                isConnected = true;
+                updateConnectionStatus(true, device.name);
+                closeDeviceScanModal();
+                showToast(`已连接到 ${device.name}`, 'success');
+                
+                // 模拟数据采集过程
+                showToast('正在采集历史数据...', 'info');
+                setTimeout(() => {
+                    showToast('数据采集完成', 'success');
+                    updateDataOverview();
+                    updateCharts(currentTimeRange);
+                }, 2000);
+            }, 1500);
+        }
+
+        // 更新连接状态
+        function updateConnectionStatus(connected, deviceName) {
+            if (connected) {
+                connectionStatusText.textContent = `已连接到 ${deviceName}`;
+                bluetoothIcon.classList.add('text-green-500');
+                bluetoothIcon.classList.add('bluetooth-pulse');
+                connectBtn.innerHTML = `
+                    <i class="fa fa-refresh mr-2"></i>
+                    <span>重新连接</span>
+                `;
+            } else {
+                connectionStatusText.textContent = '未连接设备';
+                bluetoothIcon.classList.remove('text-green-500');
+                bluetoothIcon.classList.remove('bluetooth-pulse');
+                connectBtn.innerHTML = `
+                    <i class="fa fa-search mr-2"></i>
+                    <span>扫描设备</span>
+                `;
+            }
+        }
+
+        // 更新数据概览
+        function updateDataOverview() {
+            if (!selectedStartDate || !selectedEndDate) return;
+            
+            // 筛选选定日期范围内的数据
+            const filteredData = filterDataByDateRange(mockData.history, selectedStartDate, selectedEndDate);
+            
+            // 计算总步数
+            const totalSteps = filteredData.reduce((sum, day) => sum + day.dailySteps, 0);
+            totalStepsValue.textContent = totalSteps.toLocaleString();
+            totalStepsValue.classList.add('data-update');
+            
+            // 计算平均每日步数
+            const avgSteps = Math.round(totalSteps / filteredData.length);
+            avgStepsPerDay.textContent = avgSteps.toLocaleString();
+            avgStepsPerDay.classList.add('data-update');
+            
+            // 计算活动强度
+            const activityLevelValue = calculateActivityLevel(filteredData);
+            activityLevel.textContent = activityLevelValue;
+            activityLevel.classList.add('data-update');
+            
+            // 移除动画类
+            setTimeout(() => {
+                totalStepsValue.classList.remove('data-update');
+                avgStepsPerDay.classList.remove('data-update');
+                activityLevel.classList.remove('data-update');
+            }, 500);
+        }
+        
+        // 根据日期范围筛选数据
+        function filterDataByDateRange(data, startDate, endDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            
+            return data.filter(item => {
+                const itemDate = new Date(item.date);
+                return itemDate >= start && itemDate <= end;
+            });
+        }
+        
+        // 计算活动强度
+        function calculateActivityLevel(data) {
+            // 计算所有加速度数据的平均值和标准差
+            let totalAcceleration = 0;
+            let count = 0;
+            
+            data.forEach(day => {
+                const { x, y, z } = day.accelerometerData;
+                for (let i = 0; i < x.length; i++) {
+                    // 计算每个时间点的总加速度
+                    const total = Math.sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
+                    totalAcceleration += total;
+                    count++;
+                }
+            });
+            
+            const avgAcceleration = totalAcceleration / count;
+            
+            // 根据平均加速度确定活动强度
+            if (avgAcceleration < 0.5) return '低';
+            if (avgAcceleration < 1.5) return '中';
+            return '高';
+        }
+        
+        // 生成报告
+        function generateReport() {
+            if (!isConnected) {
+                showToast('请先连接设备', 'error');
+                return;
+            }
+            
+            if (!selectedStartDate || !selectedEndDate) {
+                showToast('请选择报告日期范围', 'error');
+                return;
+            }
+            
+            showToast('正在生成报告...', 'info');
+            
+            // 模拟报告生成过程
+            setTimeout(() => {
+                showToast('报告生成成功', 'success');
+                // 更新数据概览和图表
+                updateDataOverview();
+                updateCharts(currentTimeRange);
+            }, 2000);
+        }
+        
+        // 下载PDF报告
+        function downloadPDFReport() {
+            if (!isConnected) {
+                showToast('请先连接设备并生成报告', 'error');
+                return;
+            }
+            
+            showToast('正在生成PDF报告...', 'info');
+            
+            // 模拟PDF生成和下载过程
+            setTimeout(() => {
+                showToast('PDF报告已生成，正在下载...', 'info');
+                setTimeout(() => {
+                    showToast('PDF报告下载成功', 'success');
+                }, 1500);
+            }, 2000);
+        }
+        
+        // 分享报告
+        function shareReport() {
+            if (!isConnected) {
+                showToast('请先连接设备并生成报告', 'error');
+                return;
+            }
+            
+            showToast('正在生成分享链接...', 'info');
+            
+            // 模拟分享链接生成过程
+            setTimeout(() => {
+                showToast('分享链接已复制到剪贴板', 'success');
+            }, 1500);
+        }
+        
+        // 分享报告到特定平台
+        function shareReportToPlatform(platform) {
+            if (!isConnected) {
+                showToast('请先连接设备并生成报告', 'error');
+                return;
+            }
+            
+            showToast(`正在分享到${platform}...`, 'info');
+            
+            // 模拟分享过程
+            setTimeout(() => {
+                showToast(`已分享到${platform}`, 'success');
+            }, 1500);
+        }
+
+        // 更新图表
+        function updateCharts(range) {
+            if (!selectedStartDate || !selectedEndDate) return;
+            
+            // 筛选选定日期范围内的数据
+            const filteredData = filterDataByDateRange(mockData.history, selectedStartDate, selectedEndDate);
+            
+            if (range === 'day') {
+                // 日视图 - 显示选中日期的每小时数据
+                if (filteredData.length > 0) {
+                    // 如果选择了多个日期，显示第一个日期的数据
+                    const dayData = filteredData[0];
+                    
+                    // 更新步数图表
+                    stepsChart.data.labels = mockData.steps.day.labels;
+                    stepsChart.data.datasets[0].data = dayData.hourlySteps;
+                    stepsChart.update();
+                    
+                    // 更新加速度计图表 - 每小时取平均值
+                    const hourlyAccelData = {
+                        x: [],
+                        y: [],
+                        z: []
+                    };
+                    
+                    // 每小时60个数据点，计算每小时的平均值
+                    for (let h = 0; h < 24; h++) {
+                        let hourX = 0, hourY = 0, hourZ = 0;
+                        const startIdx = h * 60;
+                        const endIdx = startIdx + 60;
+                        
+                        for (let i = startIdx; i < endIdx && i < dayData.accelerometerData.x.length; i++) {
+                            hourX += dayData.accelerometerData.x[i];
+                            hourY += dayData.accelerometerData.y[i];
+                            hourZ += dayData.accelerometerData.z[i];
+                        }
+                        
+                        hourlyAccelData.x.push(hourX / 60);
+                        hourlyAccelData.y.push(hourY / 60);
+                        hourlyAccelData.z.push(hourZ / 60);
+                    }
+                    
+                    accelerometerChart.data.labels = mockData.accelerometer.day.labels;
+                    accelerometerChart.data.datasets[0].data = hourlyAccelData.x;
+                    accelerometerChart.data.datasets[1].data = hourlyAccelData.y;
+                    accelerometerChart.data.datasets[2].data = hourlyAccelData.z;
+                    accelerometerChart.update();
+                }
+            } else if (range === 'week') {
+                // 周视图 - 显示每天的总步数
+                const dailySteps = filteredData.map(day => day.dailySteps);
+                const dayLabels = filteredData.map(day => {
+                    const date = new Date(day.date);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                });
+                
+                stepsChart.data.labels = dayLabels;
+                stepsChart.data.datasets[0].data = dailySteps;
+                stepsChart.update();
+                
+                // 加速度计数据 - 显示每天的平均加速度
+                const dailyAvgAccel = filteredData.map(day => {
+                    const { x, y, z } = day.accelerometerData;
+                    let total = 0;
+                    
+                    for (let i = 0; i < x.length; i++) {
+                        total += Math.sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
+                    }
+                    
+                    return total / x.length;
+                });
+                
+                accelerometerChart.data.labels = dayLabels;
+                accelerometerChart.data.datasets[0].data = dailyAvgAccel;
+                accelerometerChart.data.datasets[1].data = Array(dayLabels.length).fill(null); // 隐藏Y轴
+                accelerometerChart.data.datasets[2].data = Array(dayLabels.length).fill(null); // 隐藏Z轴
+                accelerometerChart.update();
+            } else if (range === 'month') {
+                // 月视图 - 按周汇总数据
+                const weeks = [];
+                const weekLabels = [];
+                
+                // 将数据按周分组
+                for (let i = 0; i < filteredData.length; i += 7) {
+                    const weekData = filteredData.slice(i, i + 7);
+                    if (weekData.length > 0) {
+                        const weekSteps = weekData.reduce((sum, day) => sum + day.dailySteps, 0);
+                        weeks.push(weekSteps);
+                        
+                        const firstDay = new Date(weekData[0].date);
+                        const lastDay = new Date(weekData[weekData.length - 1].date);
+                        weekLabels.push(`${firstDay.getMonth() + 1}/${firstDay.getDate()}-${lastDay.getMonth() + 1}/${lastDay.getDate()}`);
+                    }
+                }
+                
+                stepsChart.data.labels = weekLabels;
+                stepsChart.data.datasets[0].data = weeks;
+                stepsChart.update();
+                
+                // 加速度计数据 - 显示每周的平均加速度
+                const weeklyAvgAccel = [];
+                
+                for (let i = 0; i < filteredData.length; i += 7) {
+                    const weekData = filteredData.slice(i, i + 7);
+                    if (weekData.length > 0) {
+                        let totalAccel = 0;
+                        let count = 0;
+                        
+                        weekData.forEach(day => {
+                            const { x, y, z } = day.accelerometerData;
+                            for (let j = 0; j < x.length; j++) {
+                                totalAccel += Math.sqrt(x[j] * x[j] + y[j] * y[j] + z[j] * z[j]);
+                                count++;
                             }
                         });
-
-                        // 强制更新并多次等待
-                        chart.update();
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // 增加到1000ms
-
-                        // 再次更新以确保
-                        chart.update();
-                        await new Promise(resolve => setTimeout(resolve, 500));
-
-                        const imgData = canvas.toDataURL('image/png');
-                        console.log('图像数据前50字符:', imgData.substring(0, 50));
-
-                        doc.addImage(imgData, 'PNG', xPos, yPos, chartWidth, chartHeight);
-
-                        // 在图表上方添加日期标签
-                        doc.setFontSize(8);
-                        doc.setTextColor(0, 0, 0);
-                        doc.text(dateStr, xPos, yPos - 3);
-
-                        chart.destroy();
-                        pdfChartContainer.removeChild(canvas);
+                        
+                        weeklyAvgAccel.push(totalAccel / count);
                     }
                 }
-
-                doc.save(`BraceSense_${deviceLast4}_${startDateStr}_${endDateStr}.pdf`);
-                updateStatus('Report generated successfully.');
-            };
-
-            // ---------- 更新本地时间 ----------
-            function updateLocalTime() {
-                const now = new Date();
-                const y = now.getFullYear();
-                const m = String(now.getMonth()+1).padStart(2,'0');
-                const d = String(now.getDate()).padStart(2,'0');
-                document.getElementById('dateValue').innerText = `${y}-${m}-${d}`;
-                const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                document.getElementById('timezoneLabel').innerText = `(${tz})`;
+                
+                accelerometerChart.data.labels = weekLabels;
+                accelerometerChart.data.datasets[0].data = weeklyAvgAccel;
+                accelerometerChart.data.datasets[1].data = Array(weekLabels.length).fill(null); // 隐藏Y轴
+                accelerometerChart.data.datasets[2].data = Array(weekLabels.length).fill(null); // 隐藏Z轴
+                accelerometerChart.update();
             }
-            setInterval(updateLocalTime, 1000);
-            updateLocalTime();
+        }
 
-            // ---------- 事件绑定 ----------
-            document.getElementById('scanBtn').addEventListener('click', scanDevices);
-            document.getElementById('disconnectBtn').addEventListener('click', disconnectDevice);
-            document.getElementById('refreshBtn').addEventListener('click', refreshData);
-            document.getElementById('getDetailBtn').addEventListener('click', fetchDetailSteps);
-            document.getElementById('getAccBtn').addEventListener('click', fetchAcc);
-            document.getElementById('mergeBtn').addEventListener('click', mergeData);
-            document.getElementById('stopCollectBtn').addEventListener('click', stopCollect);
+        // 更新选项卡指示器
+        function updateTabIndicator(index) {
+            const btnWidth = timeRangeBtns[index].offsetWidth;
+            const btnLeft = timeRangeBtns[index].offsetLeft;
+            tabIndicator.style.width = `${btnWidth}px`;
+            tabIndicator.style.transform = `translateX(${btnLeft}px)`;
+            
+            // 更新按钮样式
+            timeRangeBtns.forEach(btn => {
+                btn.classList.remove('text-primary');
+                btn.classList.add('text-gray-600');
+            });
+            timeRangeBtns[index].classList.remove('text-gray-600');
+            timeRangeBtns[index].classList.add('text-primary');
+        }
 
-            // 初始化日期范围
-            (function initDateRange() {
-                const today = new Date();
-                const endDate = new Date(today);
-                const startDate = new Date(today);
-                startDate.setDate(today.getDate() - 28);
-                const formatDate = (d) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                };
-                document.getElementById('startDateInput').value = formatDate(startDate);
-                document.getElementById('endDateInput').value = formatDate(endDate);
-            })();
+        // 显示提示信息
+        function showToast(message, type = 'info') {
+            connectionToastText.textContent = message;
+            
+            if (type === 'success') {
+                connectionToastIcon.className = 'fa fa-check-circle mr-2 text-green-500';
+                connectionToast.classList.add('bg-green-50');
+                connectionToast.classList.remove('bg-blue-50', 'bg-red-50');
+            } else if (type === 'error') {
+                connectionToastIcon.className = 'fa fa-exclamation-circle mr-2 text-red-500';
+                connectionToast.classList.add('bg-red-50');
+                connectionToast.classList.remove('bg-blue-50', 'bg-green-50');
+            } else {
+                connectionToastIcon.className = 'fa fa-info-circle mr-2 text-blue-500';
+                connectionToast.classList.add('bg-blue-50');
+                connectionToast.classList.remove('bg-green-50', 'bg-red-50');
+            }
+            
+            connectionToast.classList.remove('hidden');
+            
+            clearTimeout(window.toastTimeout);
+            window.toastTimeout = setTimeout(() => {
+                connectionToast.classList.add('hidden');
+            }, 3000);
+        }
 
-            document.getElementById('disconnectBtn').disabled = true;
-
-            console.log('脚本初始化完成');
-        });
+        // 格式化时间
+        function formatTime(date) {
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
     </script>
-</body>
-</html>
+
+</body></html>
