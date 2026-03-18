@@ -832,7 +832,11 @@
                     ctx.lineWidth = 2;
                     let first = true;
                     for (let i = 0; i < dailyData.length; i++) {
-                        const value = dailyData[i][ds.key];
+                        let value = dailyData[i][ds.key];
+                        // 对 Total Swings 进行下移200处理
+                        if (ds.key === 'totalSwings') {
+                            value = value - 200;
+                        }
                         // 限幅到[-200,200]
                         const clamped = Math.max(-200, Math.min(200, value));
                         const x = padding.left + (i / 143) * chartWidth; // 143个间隔，144个点
@@ -915,7 +919,7 @@
                 const cols = 2;
                 const marginLeft = 8;   // 左边距mm
                 const marginRight = 8;  // 右边距mm
-                const marginTop = 20;    // 页眉下方起始y（第一行标题y=10，第二行y=18，图表从y=25开始留出一点间隙）
+                const marginTop = 20;    // 页眉下方起始y（第一行标题y=10，第二行y=18，图表从y=20开始）
                 const colGap = 5;        // 列间距mm
                 const rowGap = 5;         // 行间距mm
 
